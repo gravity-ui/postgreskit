@@ -1,0 +1,35 @@
+{
+  "name": "@gravity-ui/core-db",
+  "author": "Gravity UI Team",
+  "description": "Module for simplified PostgreSQL database connection",
+  "repository": "git@github.com:gravity-ui/postgreskit.git",
+  "version": "0.0.1",
+  "license": "MIT",
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "rm -rf build && npm run lint && tsc",
+    "lint": "eslint lib --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@gravity-ui/eslint-config": "^2.0.0",
+    "@gravity-ui/prettier-config": "^1.0.1",
+    "@gravity-ui/tsconfig": "^1.0.0",
+    "@types/lodash": "^4.14.195",
+    "@types/node": "^18.16.16",
+    "eslint": "^8.41.0",
+    "prettier": "^2.8.8",
+    "typescript": "^5.0.4"
+  },
+  "dependencies": {
+    "knex": "^2.4.2",
+    "lodash": "^4.17.21",
+    "objection": "^3.0.2",
+    "pg": "^8.11.0"
+  }
+}
