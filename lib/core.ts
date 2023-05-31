@@ -12,6 +12,7 @@ export interface CoreDBDispatcherOptions {
     suppressStatusLogs?: boolean;
     beforeTerminate?: () => Promise<void>;
 }
+
 export interface CoreDBConstructorArgs {
     connectionString: string;
     dispatcherOptions?: CoreDBDispatcherOptions;
@@ -72,6 +73,7 @@ export function initDB({
             .then(() => db.terminate())
             .then(() => process.exit(0))
             .catch((error: unknown) => {
+                // eslint-disable-next-line no-console
                 console.error(error);
                 process.exit(-1);
             });

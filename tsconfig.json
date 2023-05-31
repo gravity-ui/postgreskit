@@ -4,10 +4,6 @@
     "outDir": "build",
     "declaration": true
   },
-  "include": [
-    "lib/**/*.ts"
-  ],
-  "exclude": [
-    "node_modules"
-  ]
+  "include": ["lib/**/*.ts"],
+  "exclude": ["node_modules"]
 }
