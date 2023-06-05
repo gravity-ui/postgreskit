@@ -20,29 +20,29 @@ export interface CoreDBConstructorArgs {
     logger?: ExLogger;
 }
 
-class CoreBaseModel extends Model {
-    private static _db: PGDispatcher;
+let _db: PGDispatcher;
 
+class CoreBaseModel extends Model {
     static set db(value: PGDispatcher) {
-        if (!CoreBaseModel._db) {
-            CoreBaseModel._db = value;
+        if (!_db) {
+            _db = value;
         }
     }
 
     static get primary() {
-        return CoreBaseModel._db.primary;
+        return _db.primary;
     }
 
     get primary() {
-        return CoreBaseModel._db.primary;
+        return _db.primary;
     }
 
     static get replica() {
-        return CoreBaseModel._db.replica;
+        return _db.replica;
     }
 
     get replica() {
-        return CoreBaseModel._db.replica;
+        return _db.replica;
     }
 }
 
@@ -83,7 +83,7 @@ export function initDB({
     process.on('SIGUSR1', terminate);
     process.on('SIGUSR2', terminate);
 
-    CoreBaseModel.db = db;
+    _db = db;
 
     const helpers = {
         clearDatabase: async function () {
@@ -103,6 +103,6 @@ export function initDB({
             await db.primary.seed.run();
         },
     };
-    logger.log('Core-db is up and running!');
+    logger.info('Core-db is up and running!');
     return {db, CoreBaseModel, helpers};
 }

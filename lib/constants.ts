@@ -23,12 +23,12 @@ export const defaultDispatcherOptions: PDOptions = {
 };
 
 export const defaultExLogger: ExLogger = {
-    log(message, extra) {
+    info(...args) {
         // eslint-disable-next-line no-console
-        console.log(message, extra);
+        console.log(...args);
     },
-    logError(message, error, extra) {
+    error(...args) {
         // eslint-disable-next-line no-console
-        console.error(message, error, extra);
+        console.error(...args);
     },
 };

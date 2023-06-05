@@ -16,6 +16,6 @@ interface ExErrorLogger {
 }
 
 export interface ExLogger {
-    log: ExInfoLogger;
-    logError: ExErrorLogger;
+    info: ExInfoLogger;
+    error: ExErrorLogger;
 }

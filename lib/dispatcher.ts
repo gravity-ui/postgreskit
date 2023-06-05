@@ -77,14 +77,14 @@ export class PGDispatcher {
         this.logger = {
             info: ({message, data}) => {
                 if (!this.options.suppressStatusLogs) {
-                    logger.log(message, data);
+                    logger.info(message, data);
                 }
             },
             error: ({message, error, data}) => {
                 if (!this.options.suppressStatusLogs) {
                     const messageToReport = message || 'Error without description';
                     const errorToReport = error || new Error(messageToReport);
-                    logger.logError('PGDispatcher error', errorToReport, data);
+                    logger.error('PGDispatcher error', errorToReport, data);
                 }
             },
         };
