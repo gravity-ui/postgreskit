@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/gravity-ui/postgreskit/compare/v1.0.0...v1.1.0) (2024-01-09)
+
+
+### Features
+
+* refact attach db to Model ([#5](https://github.com/gravity-ui/postgreskit/issues/5)) ([7e3a323](https://github.com/gravity-ui/postgreskit/commit/7e3a3232c0eaa4ca20ad3c8e4a89b3640e9951cd))
+
 ## 1.0.0 (2023-07-18)
 
 
