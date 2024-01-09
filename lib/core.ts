@@ -20,7 +20,15 @@ export interface CoreDBConstructorArgs {
     logger?: ExLogger;
 }
 
-export function getModel() {
+declare class BaseModel extends Model {
+    static set db(value: PGDispatcher);
+    static get primary(): InstanceType<typeof PGDispatcher>['primary'];
+    get primary(): InstanceType<typeof PGDispatcher>['primary'];
+    static get replica(): InstanceType<typeof PGDispatcher>['replica'];
+    get replica(): InstanceType<typeof PGDispatcher>['replica'];
+}
+
+export function getModel(): typeof BaseModel {
     let _db: PGDispatcher;
 
     class CoreBaseModel extends Model {
