@@ -20,30 +20,34 @@ export interface CoreDBConstructorArgs {
     logger?: ExLogger;
 }
 
-let _db: PGDispatcher;
+export function getModel() {
+    let _db: PGDispatcher;
 
-class CoreBaseModel extends Model {
-    static set db(value: PGDispatcher) {
-        if (!_db) {
-            _db = value;
+    class CoreBaseModel extends Model {
+        static set db(value: PGDispatcher) {
+            if (!_db) {
+                _db = value;
+            }
+        }
+
+        static get primary() {
+            return _db.primary;
+        }
+
+        get primary() {
+            return _db.primary;
+        }
+
+        static get replica() {
+            return _db.replica;
+        }
+
+        get replica() {
+            return _db.replica;
         }
     }
 
-    static get primary() {
-        return _db.primary;
-    }
-
-    get primary() {
-        return _db.primary;
-    }
-
-    static get replica() {
-        return _db.replica;
-    }
-
-    get replica() {
-        return _db.replica;
-    }
+    return CoreBaseModel;
 }
 
 export function initDB({
@@ -83,7 +87,8 @@ export function initDB({
     process.on('SIGUSR1', terminate);
     process.on('SIGUSR2', terminate);
 
-    _db = db;
+    const CoreBaseModel = getModel();
+    CoreBaseModel.db = db;
 
     const helpers = {
         clearDatabase: async function () {
