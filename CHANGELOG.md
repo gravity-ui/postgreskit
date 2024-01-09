@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/gravity-ui/postgreskit/compare/v1.1.0...v1.1.1) (2024-01-09)
+
+
+### Bug Fixes
+
+* **CoreBaseModel:** declare BaseModel ([#7](https://github.com/gravity-ui/postgreskit/issues/7)) ([e03fef4](https://github.com/gravity-ui/postgreskit/commit/e03fef499aade2218367cf1157325bd60b90519d))
+
 ## [1.1.0](https://github.com/gravity-ui/postgreskit/compare/v1.0.0...v1.1.0) (2024-01-09)
 
 
