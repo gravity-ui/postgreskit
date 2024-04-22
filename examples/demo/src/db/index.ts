@@ -7,7 +7,7 @@ import {nodekit} from '../nodekit';
 const knexOptions = {
     client: 'pg',
     pool: {
-        min: 5,
+        min: 0,
         max: 15,
         acquireTimeoutMillis: 40000,
         createTimeoutMillis: 50000,
