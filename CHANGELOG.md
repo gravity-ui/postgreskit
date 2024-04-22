@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/gravity-ui/postgreskit/compare/v1.1.1...v1.2.0) (2024-04-22)
+
+
+### Features
+
+* change default min pool connections ([#15](https://github.com/gravity-ui/postgreskit/issues/15)) ([83c1bfe](https://github.com/gravity-ui/postgreskit/commit/83c1bfe418f0006edf946b0cbd9d343ef9176dfd))
+
 ## [1.1.1](https://github.com/gravity-ui/postgreskit/compare/v1.1.0...v1.1.1) (2024-01-09)
 
 
