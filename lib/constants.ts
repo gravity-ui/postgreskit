@@ -5,7 +5,7 @@ import type {ExLogger, PDOptions} from './types';
 export const defaultKnexOptions: Knex.Config = {
     client: 'pg',
     pool: {
-        min: 2,
+        min: 0,
         max: 10,
         acquireTimeoutMillis: 40000,
         createTimeoutMillis: 50000,
