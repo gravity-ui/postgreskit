@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/gravity-ui/postgreskit/compare/v1.2.0...v1.3.0) (2024-05-22)
+
+
+### Features
+
+* add onlyOne option to migrate and rollback helpers ([#18](https://github.com/gravity-ui/postgreskit/issues/18)) ([b0cbb09](https://github.com/gravity-ui/postgreskit/commit/b0cbb099e048e16383fcb8bcf9b708f221e7391d))
+
 ## [1.2.0](https://github.com/gravity-ui/postgreskit/compare/v1.1.1...v1.2.0) (2024-04-22)
 
 
