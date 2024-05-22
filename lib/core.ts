@@ -103,13 +103,26 @@ export function initDB({
             await db.ready();
             await db.primary.migrate.rollback({}, true);
         },
-        rollbackDatabase: async function () {
+        rollbackDatabase: async function (args?: {onlyOne: boolean}) {
             await db.ready();
-            await db.primary.migrate.rollback({});
+
+            const onlyOne = args ? args.onlyOne : false;
+
+            if (onlyOne) {
+                await db.primary.migrate.down();
+            } else {
+                await db.primary.migrate.rollback({});
+            }
         },
-        migrateDatabase: async function () {
+        migrateDatabase: async function (args?: {onlyOne: boolean}) {
             await db.ready();
-            await db.primary.migrate.latest();
+
+            const onlyOne = args ? args.onlyOne : false;
+            if (onlyOne) {
+                await db.primary.migrate.up();
+            } else {
+                await db.primary.migrate.latest();
+            }
         },
         prepareDatabase: async function () {
             await db.primary.migrate.latest();
