@@ -67,8 +67,8 @@ export function initDB({
     if (!connectionString) {
         throw new Error('Empty connection string');
     }
-    const mergedKnexOptions = _.merge(defaultKnexOptions, knexOptions);
-    const mergedDispatcherOptions = _.merge(defaultDispatcherOptions, dispatcherOptions);
+    const mergedKnexOptions = _.merge({}, defaultKnexOptions, knexOptions);
+    const mergedDispatcherOptions = _.merge({}, defaultDispatcherOptions, dispatcherOptions);
 
     const db = new PGDispatcher({
         connections: connectionString.split(','),
