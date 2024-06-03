@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/gravity-ui/postgreskit/compare/v1.3.0...v1.3.1) (2024-06-03)
+
+
+### Bug Fixes
+
+* merging default options ([#20](https://github.com/gravity-ui/postgreskit/issues/20)) ([ae0c234](https://github.com/gravity-ui/postgreskit/commit/ae0c2341b76521ff1c466fe58b272d017450aa39))
+
 ## [1.3.0](https://github.com/gravity-ui/postgreskit/compare/v1.2.0...v1.3.0) (2024-05-22)
 
 
