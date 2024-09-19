@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.0](https://github.com/gravity-ui/postgreskit/compare/v1.3.1...v2.0.0) (2024-09-19)
+
+
+### ⚠ BREAKING CHANGES
+
+* update knex major and other dependencies ([#22](https://github.com/gravity-ui/postgreskit/issues/22))
+
+### Features
+
+* update knex major and other dependencies ([#22](https://github.com/gravity-ui/postgreskit/issues/22)) ([f194404](https://github.com/gravity-ui/postgreskit/commit/f19440468a8feda81bf5f6a371dc710a0b1de0f3))
+
 ## [1.3.1](https://github.com/gravity-ui/postgreskit/compare/v1.3.0...v1.3.1) (2024-06-03)
 
 
