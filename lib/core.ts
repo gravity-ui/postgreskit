@@ -4,7 +4,7 @@ import {Model} from 'objection';
 
 import {defaultDispatcherOptions, defaultExLogger, defaultKnexOptions} from './constants';
 import {PGDispatcher} from './dispatcher';
-import type {ExLogger} from './types';
+import type {BaseModel, ExLogger} from './types';
 
 export interface CoreDBDispatcherOptions {
     healthcheckInterval?: number;
@@ -18,14 +18,6 @@ export interface CoreDBConstructorArgs {
     dispatcherOptions?: CoreDBDispatcherOptions;
     knexOptions?: Knex.Config;
     logger?: ExLogger;
-}
-
-declare class BaseModel extends Model {
-    static set db(value: PGDispatcher);
-    static get primary(): InstanceType<typeof PGDispatcher>['primary'];
-    get primary(): InstanceType<typeof PGDispatcher>['primary'];
-    static get replica(): InstanceType<typeof PGDispatcher>['replica'];
-    get replica(): InstanceType<typeof PGDispatcher>['replica'];
 }
 
 export function getModel(): typeof BaseModel {

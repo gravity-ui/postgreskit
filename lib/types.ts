@@ -1,3 +1,6 @@
+import type {Model} from 'objection';
+import type {PGDispatcher} from './dispatcher';
+
 export interface PDOptions {
     healthcheckInterval: number;
     healthcheckTimeout: number;
@@ -18,4 +21,12 @@ interface ExErrorLogger {
 export interface ExLogger {
     info: ExInfoLogger;
     error: ExErrorLogger;
+}
+
+export declare class BaseModel extends Model {
+    static set db(value: PGDispatcher);
+    static get primary(): InstanceType<typeof PGDispatcher>['primary'];
+    get primary(): InstanceType<typeof PGDispatcher>['primary'];
+    static get replica(): InstanceType<typeof PGDispatcher>['replica'];
+    get replica(): InstanceType<typeof PGDispatcher>['replica'];
 }
