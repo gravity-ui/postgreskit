@@ -4,7 +4,7 @@
   "description": "Demo for PostgresKit",
   "main": "index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "rm -rf ./build && rm -rf ./node_modules && npm ci && tsc",
     "watch": "tsc -w",
     "dev": "tsc-watch -w --onSuccess 'node build/'",
     "migration:create": "npx knex migrate:make --migrations-directory ./src/db/migrations -x ts",
@@ -18,9 +18,11 @@
     "@gravity-ui/prettier-config": "^1.1.0",
     "@gravity-ui/tsconfig": "^1.0.0",
     "@types/node": "^18.16.16",
+    "@types/supertest": "^6.0.2",
     "eslint": "^8.56.0",
     "husky": "^9.1.6",
     "prettier": "^3.3.3",
+    "supertest": "^7.0.0",
     "tsc-watch": "^5.0.3",
     "typescript": "^5.6.2"
   },

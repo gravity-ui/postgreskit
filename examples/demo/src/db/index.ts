@@ -1,10 +1,11 @@
 import * as path from 'path';
 
 import {initDB} from '@gravity-ui/postgreskit';
+import {getTestDsnList, testDbConfig} from '../tests/constants';
 
 import {nodekit} from '../nodekit';
 
-const knexOptions = {
+export const knexOptions = {
     client: 'pg',
     pool: {
         min: 0,
@@ -25,7 +26,7 @@ const knexOptions = {
         directory: path.resolve(__dirname, 'seeds'),
         loadExtensions: ['.js'],
     },
-    debug: true,
+    debug: false,
 };
 
 const dispatcherOptions = {
@@ -34,8 +35,13 @@ const dispatcherOptions = {
     suppressStatusLogs: true,
 };
 
+const connectionString =
+    process.env.APP_ENV === 'test'
+        ? getTestDsnList()
+        : `postgresql://${testDbConfig.user}:${testDbConfig.password}@localhost:5432/${testDbConfig.dbName}`;
+
 const {db, CoreBaseModel, helpers} = initDB({
-    connectionString: 'postgresql://test_user:test_user@localhost:5432/test_postgreskit',
+    connectionString,
     dispatcherOptions,
     knexOptions,
     logger: {

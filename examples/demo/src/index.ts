@@ -16,4 +16,8 @@ const app = new ExpressKit(nodekit, {
     },
 });
 
-app.run();
+if (require.main === module) {
+    app.run();
+}
+
+export default app;
