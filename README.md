@@ -82,7 +82,7 @@ The `initDB` constructor exports three elements: `db`, `CoreBaseModel`, and `hel
 
 ### db
 
-`db`: Instance of the [PGDispatcher](https://github.yandex-team.ru/data-ui/postgreskit/blob/master/lib/dispatcher.ts) module responsible for primary/replica connection balancing. Under the hood, this module creates N instances of knex (N is the number of hosts passed in `connectionString`). From these instances, it polls the database hosts every `healthcheckInterval` milliseconds, requesting if they are primary hosts or replica hosts (using the `SELECT pg_is_in_recovery()` query).
+`db`: Instance of the [PGDispatcher](https://github.com/gravity-ui/postgreskit/blob/main/lib/dispatcher.ts) module responsible for primary/replica connection balancing. Under the hood, this module creates N instances of knex (N is the number of hosts passed in `connectionString`). From these instances, it polls the database hosts every `healthcheckInterval` milliseconds, requesting if they are primary hosts or replica hosts (using the `SELECT pg_is_in_recovery()` query).
 
 Public `db` methods:
 
