@@ -19,7 +19,7 @@ export const defaultDispatcherOptions: PDOptions = {
     healthcheckInterval: 5000,
     healthcheckTimeout: 700,
     suppressStatusLogs: false,
-    beforeTerminate: () => Promise.resolve().then(() => process.exit(0)),
+    beforeTerminate: () => Promise.resolve(),
 };
 
 export const defaultExLogger: ExLogger = {
