@@ -75,17 +75,13 @@ export function initDB({
         beforeTerminate()
             .catch(() => {})
             .then(() => db.terminate())
-            .then(() => process.exit(0))
             .catch((error: unknown) => {
                 // eslint-disable-next-line no-console
                 console.error(error);
-                process.exit(-1);
             });
     };
 
     process.on('SIGINT', terminate);
-    process.on('SIGUSR1', terminate);
-    process.on('SIGUSR2', terminate);
 
     const CoreBaseModel = getModel();
     CoreBaseModel.db = db;
