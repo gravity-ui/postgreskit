@@ -118,5 +118,5 @@ export function initDB({
         },
     };
     logger.info('Core-db is up and running!');
-    return {db, CoreBaseModel, helpers};
+    return {db, terminate, CoreBaseModel, helpers};
 }
