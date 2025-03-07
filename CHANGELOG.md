@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.0.0](https://github.com/gravity-ui/postgreskit/compare/v2.0.0...v3.0.0) (2025-03-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* terminate on signal without exit process ([#27](https://github.com/gravity-ui/postgreskit/issues/27))
+
+### Features
+
+* terminate on signal without exit process ([#27](https://github.com/gravity-ui/postgreskit/issues/27)) ([90c0b50](https://github.com/gravity-ui/postgreskit/commit/90c0b50c3b78a45a5696a827e1087ba04da3caf8))
+
 ## [2.0.0](https://github.com/gravity-ui/postgreskit/compare/v1.3.1...v2.0.0) (2024-09-19)
 
 
