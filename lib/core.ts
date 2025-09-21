@@ -1,6 +1,6 @@
 import type {Knex} from 'knex';
 import _ from 'lodash';
-import {Model} from 'objection';
+import {type Constructor, Model} from 'objection';
 
 import {defaultDispatcherOptions, defaultExLogger, defaultKnexOptions} from './constants';
 import {PGDispatcher} from './dispatcher';
@@ -20,8 +20,13 @@ export interface CoreDBConstructorArgs {
     logger?: ExLogger;
 }
 
-export function getModel(): typeof BaseModel {
+export type GetModelParams = {cancelOnTimeout?: boolean; useLimitInFirst?: boolean};
+
+export function getModel(params: GetModelParams = {}): typeof BaseModel {
     let _db: PGDispatcher;
+
+    const cancelOnTimeout = Boolean(params.cancelOnTimeout);
+    const useLimitInFirst = Boolean(params.useLimitInFirst);
 
     class CoreBaseModel extends Model {
         static set db(value: PGDispatcher) {
@@ -44,6 +49,28 @@ export function getModel(): typeof BaseModel {
 
         get replica() {
             return _db.replica;
+        }
+
+        static query<M extends Model>(
+            this: Constructor<M>,
+            ...args: Parameters<typeof Model.query<M>>
+        ): ReturnType<typeof Model.query<M>> {
+            const query = super.query<M>(...args);
+
+            if (cancelOnTimeout) {
+                const originalTimeout = query.timeout;
+
+                query.timeout = (ms, options) => {
+                    const optionsWithCancel = {cancel: true, ...(options ?? {})};
+                    return originalTimeout.apply(query, [ms, optionsWithCancel]);
+                };
+            }
+
+            return query;
+        }
+
+        static get useLimitInFirst() {
+            return useLimitInFirst;
         }
     }
 
