@@ -13,14 +13,15 @@ export interface CoreDBDispatcherOptions {
     beforeTerminate?: () => Promise<void>;
 }
 
+export type GetModelParams = {cancelOnTimeout?: boolean; useLimitInFirst?: boolean};
+
 export interface CoreDBConstructorArgs {
     connectionString: string;
     dispatcherOptions?: CoreDBDispatcherOptions;
     knexOptions?: Knex.Config;
     logger?: ExLogger;
+    modelParams?: GetModelParams;
 }
-
-export type GetModelParams = {cancelOnTimeout?: boolean; useLimitInFirst?: boolean};
 
 export function getModel(params: GetModelParams = {}): typeof BaseModel {
     let _db: PGDispatcher;
@@ -82,6 +83,7 @@ export function initDB({
     dispatcherOptions,
     knexOptions = {},
     logger = defaultExLogger,
+    modelParams,
 }: CoreDBConstructorArgs) {
     if (!connectionString) {
         throw new Error('Empty connection string');
@@ -110,7 +112,7 @@ export function initDB({
 
     process.on('SIGINT', terminate);
 
-    const CoreBaseModel = getModel();
+    const CoreBaseModel = getModel(modelParams);
     CoreBaseModel.db = db;
 
     const helpers = {
