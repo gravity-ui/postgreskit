@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1.0](https://github.com/gravity-ui/postgreskit/compare/v3.0.0...v3.1.0) (2025-09-22)
+
+
+### Features
+
+* add cancelOnTimeout and useLimitInFirst params to getModel ([#29](https://github.com/gravity-ui/postgreskit/issues/29)) ([b6863d5](https://github.com/gravity-ui/postgreskit/commit/b6863d5ab12c2cf21c2054a54111a30ad0246b72))
+
 ## [3.0.0](https://github.com/gravity-ui/postgreskit/compare/v2.0.0...v3.0.0) (2025-03-07)
 
 
