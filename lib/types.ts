@@ -4,6 +4,7 @@ import type {PGDispatcher} from './dispatcher';
 export interface PDOptions {
     healthcheckInterval: number;
     healthcheckTimeout: number;
+    healthcheckConsecutiveFailures?: number;
     suppressStatusLogs: boolean;
     beforeTerminate: () => Promise<void>;
 }
