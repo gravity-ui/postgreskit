@@ -58,12 +58,24 @@ export const {db, CoreBaseModel, helpers} = initDB({
 
 - `connectionString` is a set of [postgres connection strings](https://stackoverflow.com/questions/3582552/postgresql-connection-url) separated by a comma, with at least one host required, for example: `'postgresql://user:password@dbHost1:5432/dbName,postgresql://user:password@dbHost2:5432/dbName'`
 - `logger`: Provide the `info` and `error` callbacks for logging messages
-- `dispatcherOptions`: Settings for the primary/replica balancing (none of the options are required)
+- `dispatcherOptions`: Settings for connection balancing (none of the options are required)
   - `healthcheckInterval`: Health check interval in milliseconds, default value: 5000ms
   - `healthcheckTimeout`: Health check interval in milliseconds, default value: 700ms
-  - `suppressStatusLogs`: Boolean value that disables database health checks (useful for developers)
+  - `suppressStatusLogs`: Boolean value that disables database health-check status logs (useful for developers)
   - `beforeTerminate`: Function called before terminating a connection, must return a Promise
+  - `topologyMode`: Connection topology, either `primary-replica` (the default) or `proxy`
 - `knexOptions`: Non-required additional options that will be passed to Knex before initialization
+
+When all connection strings point to equivalent proxy or router instances, such as SPQR routers, use `proxy` mode. Healthy endpoints are then eligible for both primary and replica queries, and the endpoint with the lowest latest health-check latency is selected:
+
+```typescript
+initDB({
+  connectionString: process.env.POSTGRES_DSN_LIST,
+  dispatcherOptions: {
+    topologyMode: 'proxy',
+  },
+});
+```
 
 Here is the recommended project structure (we only list the directories that have to do with working with the database):
 
@@ -82,7 +94,7 @@ The `initDB` constructor exports three elements: `db`, `CoreBaseModel`, and `hel
 
 ### db
 
-`db`: Instance of the [PGDispatcher](https://github.com/gravity-ui/postgreskit/blob/main/lib/dispatcher.ts) module responsible for primary/replica connection balancing. Under the hood, this module creates N instances of knex (N is the number of hosts passed in `connectionString`). From these instances, it polls the database hosts every `healthcheckInterval` milliseconds, requesting if they are primary hosts or replica hosts (using the `SELECT pg_is_in_recovery()` query).
+`db`: Instance of the [PGDispatcher](https://github.com/gravity-ui/postgreskit/blob/main/lib/dispatcher.ts) module responsible for connection balancing. Under the hood, this module creates N instances of knex (N is the number of hosts passed in `connectionString`). By default, it polls the database hosts every `healthcheckInterval` milliseconds, requesting if they are primary hosts or replica hosts (using the `SELECT pg_is_in_recovery()` query). In `proxy` topology mode, it uses `SELECT 1` instead and routes both `db.primary` and `db.replica` to the fastest healthy endpoint.
 
 Public `db` methods:
 

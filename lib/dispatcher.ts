@@ -138,6 +138,10 @@ export class PGDispatcher {
     get primary() {
         this.checkConnectionsAvailability();
 
+        if (this.options.topologyMode === 'proxy') {
+            return this.fastestHealthyConnection.knex;
+        }
+
         const primaryConnections = this.connections.filter((c) => c.primary);
         if (primaryConnections.length > 1) {
             this.logger.error({
@@ -159,6 +163,10 @@ export class PGDispatcher {
 
     get replica() {
         this.checkConnectionsAvailability();
+
+        if (this.options.topologyMode === 'proxy') {
+            return this.fastestHealthyConnection.knex;
+        }
 
         const replicaConnections = this.healthyConnections.filter((c) => !c.primary);
 
@@ -213,6 +221,12 @@ export class PGDispatcher {
     }
 
     private async performCheckupQuery(knex: Knex): Promise<PDCheckupResult> {
+        if (this.options.topologyMode === 'proxy') {
+            await knex.raw('SELECT 1;').timeout(this.options.healthcheckTimeout);
+
+            return {pingOk: true, primary: false};
+        }
+
         const result = await knex
             .raw('SELECT pg_is_in_recovery();')
             .timeout(this.options.healthcheckTimeout);
@@ -276,6 +290,10 @@ export class PGDispatcher {
 
     private get healthyConnections() {
         return this.connections.filter((c) => c.healthy);
+    }
+
+    private get fastestHealthyConnection() {
+        return this.healthyConnections.sort((a, b) => a.latency - b.latency)[0];
     }
 
     private checkConnectionsAvailability() {

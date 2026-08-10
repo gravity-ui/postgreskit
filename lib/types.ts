@@ -1,11 +1,14 @@
 import type {Model} from 'objection';
 import type {PGDispatcher} from './dispatcher';
 
+export type TopologyMode = 'primary-replica' | 'proxy';
+
 export interface PDOptions {
     healthcheckInterval: number;
     healthcheckTimeout: number;
     suppressStatusLogs: boolean;
     beforeTerminate: () => Promise<void>;
+    topologyMode: TopologyMode;
 }
 
 export type Dict = {[key: string]: unknown};
