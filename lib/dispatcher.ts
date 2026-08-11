@@ -138,7 +138,7 @@ export class PGDispatcher {
     get primary() {
         this.checkConnectionsAvailability();
 
-        if (this.options.topologyMode === 'proxy') {
+        if (this.isProxyMode) {
             return this.fastestHealthyConnection.knex;
         }
 
@@ -164,7 +164,7 @@ export class PGDispatcher {
     get replica() {
         this.checkConnectionsAvailability();
 
-        if (this.options.topologyMode === 'proxy') {
+        if (this.isProxyMode) {
             return this.fastestHealthyConnection.knex;
         }
 
@@ -221,7 +221,7 @@ export class PGDispatcher {
     }
 
     private async performCheckupQuery(knex: Knex): Promise<PDCheckupResult> {
-        if (this.options.topologyMode === 'proxy') {
+        if (this.isProxyMode) {
             await knex.raw('SELECT 1;').timeout(this.options.healthcheckTimeout);
 
             return {pingOk: true, primary: false};
@@ -290,6 +290,10 @@ export class PGDispatcher {
 
     private get healthyConnections() {
         return this.connections.filter((c) => c.healthy);
+    }
+
+    private get isProxyMode() {
+        return this.options.topologyMode === 'proxy';
     }
 
     private get fastestHealthyConnection() {
