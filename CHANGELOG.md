@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.2.0](https://github.com/gravity-ui/postgreskit/compare/v3.1.0...v3.2.0) (2026-08-11)
+
+
+### Features
+
+* add proxy topology mode for SPQR-compatible routing ([#33](https://github.com/gravity-ui/postgreskit/issues/33)) ([267d953](https://github.com/gravity-ui/postgreskit/commit/267d95365565ec38a21a3061b38cbec6dc7ba2e3))
+
 ## [3.1.0](https://github.com/gravity-ui/postgreskit/compare/v3.0.0...v3.1.0) (2025-09-22)
 
 
