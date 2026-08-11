@@ -4,13 +4,16 @@ import {type Constructor, Model} from 'objection';
 
 import {defaultDispatcherOptions, defaultExLogger, defaultKnexOptions} from './constants';
 import {PGDispatcher} from './dispatcher';
-import type {BaseModel, ExLogger} from './types';
+import type {BaseModel, ExLogger, TopologyMode} from './types';
+
+export type {TopologyMode} from './types';
 
 export interface CoreDBDispatcherOptions {
     healthcheckInterval?: number;
     healthcheckTimeout?: number;
     suppressStatusLogs?: boolean;
     beforeTerminate?: () => Promise<void>;
+    topologyMode?: TopologyMode;
 }
 
 export type GetModelParams = {cancelOnTimeout?: boolean; useLimitInFirst?: boolean};

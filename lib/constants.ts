@@ -20,6 +20,7 @@ export const defaultDispatcherOptions: PDOptions = {
     healthcheckTimeout: 700,
     suppressStatusLogs: false,
     beforeTerminate: () => Promise.resolve(),
+    topologyMode: 'primary-replica',
 };
 
 export const defaultExLogger: ExLogger = {
