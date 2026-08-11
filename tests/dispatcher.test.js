@@ -103,12 +103,11 @@ describe('PGDispatcher topology modes', () => {
             expect(connection).not.toHaveProperty('primary');
         }
 
-        expect(loggedErrorMessages(logger)).not.toEqual(
-            expect.arrayContaining([
-                'Multiple primary connections detected, something is wrong',
-                'No alive replica available, using master for read',
-            ]),
+        const errorMessages = loggedErrorMessages(logger);
+        expect(errorMessages).not.toContain(
+            'Multiple primary connections detected, something is wrong',
         );
+        expect(errorMessages).not.toContain('No alive replica available, using master for read');
     });
 
     test('the existing unavailable-database error is preserved when all proxies are unhealthy', async () => {
