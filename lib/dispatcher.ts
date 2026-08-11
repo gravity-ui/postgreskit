@@ -202,9 +202,10 @@ export class PGDispatcher {
                 this.logger.info({
                     message: 'Database current status',
                     data: {
+                        ...(this.isProxyMode ? {topologyMode: this.options.topologyMode} : {}),
                         connections: this.connections.map((c) => ({
                             host: c.host,
-                            primary: c.primary,
+                            ...(this.isProxyMode ? {} : {primary: c.primary}),
                             healthy: c.healthy,
                             latency: c.latency,
                         })),

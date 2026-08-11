@@ -94,6 +94,15 @@ describe('PGDispatcher topology modes', () => {
         }
         expect(dispatcher.primary).toBe(fasterProxy);
         expect(dispatcher.replica).toBe(fasterProxy);
+
+        const statusLog = logger.info.mock.calls.find(
+            ([message]) => message === 'Database current status',
+        );
+        expect(statusLog[1].topologyMode).toBe('proxy');
+        for (const connection of statusLog[1].connections) {
+            expect(connection).not.toHaveProperty('primary');
+        }
+
         expect(loggedErrorMessages(logger)).not.toEqual(
             expect.arrayContaining([
                 'Multiple primary connections detected, something is wrong',
