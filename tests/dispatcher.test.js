@@ -78,6 +78,23 @@ describe('PGDispatcher topology modes', () => {
         expect(dispatcher.replica).toBe(replica);
     });
 
+    test('the default mode emits primary/replica topology warnings', async () => {
+        const firstPrimary = createKnex(successfulCheckup({pg_is_in_recovery: false}));
+        const secondPrimary = createKnex(successfulCheckup({pg_is_in_recovery: false}));
+        const {dispatcher, logger} = createDispatcher([firstPrimary, secondPrimary]);
+
+        await dispatcher.ready();
+
+        expect(dispatcher.primary).toBe(firstPrimary);
+        expect(dispatcher.replica).toBe(firstPrimary);
+
+        const errorMessages = loggedErrorMessages(logger);
+        expect(errorMessages).toContain(
+            'Multiple primary connections detected, something is wrong',
+        );
+        expect(errorMessages).toContain('No alive replica available, using master for read');
+    });
+
     test('proxy mode routes both roles to the fastest healthy endpoint without topology warnings', async () => {
         const slowerProxy = createKnex(successfulCheckup({value: 1}, 30));
         const fasterProxy = createKnex(successfulCheckup({value: 1}, 5));
