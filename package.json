@@ -23,8 +23,9 @@
     "prepublishOnly": "npm run build",
     "prepare": "husky install",
     "test:prepare": "npm run build && cd ./examples/demo && npm run build && cd ../../",
+    "test:unit": "jest -c ./jest/unit.config.js",
     "test:run": "JEST_TESTCONTAINERS_CONFIG_PATH='./jest/testcontainers-config.js' NODE_TLS_REJECT_UNAUTHORIZED=0 APP_LOGGING_LEVEL='silent' APP_ENV='test' jest -c './jest/jest.config.js' --detectOpenHandles",
-    "test": "npm run test:prepare && npm run test:run"
+    "test": "npm run test:prepare && npm run test:unit && npm run test:run"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.5.0",
