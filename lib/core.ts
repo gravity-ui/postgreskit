@@ -24,6 +24,7 @@ export interface CoreDBConstructorArgs {
     knexOptions?: Knex.Config;
     logger?: ExLogger;
     modelParams?: GetModelParams;
+    onKnexCreated?: (knex: Knex) => void;
 }
 
 export function getModel(params: GetModelParams = {}): typeof BaseModel {
@@ -87,6 +88,7 @@ export function initDB({
     knexOptions = {},
     logger = defaultExLogger,
     modelParams,
+    onKnexCreated,
 }: CoreDBConstructorArgs) {
     if (!connectionString) {
         throw new Error('Empty connection string');
@@ -99,6 +101,7 @@ export function initDB({
         options: mergedDispatcherOptions,
         knexOptions: mergedKnexOptions,
         logger,
+        onKnexCreated,
     });
 
     const terminate = () => {
