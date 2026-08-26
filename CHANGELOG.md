@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.3.0](https://github.com/gravity-ui/postgreskit/compare/v3.2.0...v3.3.0) (2026-08-26)
+
+
+### Features
+
+* **dispatcher:** add new onKnexCreated callback ([#35](https://github.com/gravity-ui/postgreskit/issues/35)) ([3a2bd56](https://github.com/gravity-ui/postgreskit/commit/3a2bd560cd7b1c2dc2a29ec359526b830bc9ffe5))
+
 ## [3.2.0](https://github.com/gravity-ui/postgreskit/compare/v3.1.0...v3.2.0) (2026-08-11)
 
 
