@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.3.1](https://github.com/gravity-ui/postgreskit/compare/v3.3.0...v3.3.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* **core:** add onKnexCreated to props initDB func ([#37](https://github.com/gravity-ui/postgreskit/issues/37)) ([908c1df](https://github.com/gravity-ui/postgreskit/commit/908c1dfefd8cd8db7564466f025c5491c78d98da))
+
 ## [3.3.0](https://github.com/gravity-ui/postgreskit/compare/v3.2.0...v3.3.0) (2026-08-26)
 
 
