@@ -24,6 +24,8 @@ export interface PDConstructorArgs {
     options: PDOptions;
     knexOptions?: Knex.Config;
     logger: ExLogger;
+
+    onKnexCreated?: (knex: Knex) => void;
 }
 
 interface PDConnection {
@@ -52,20 +54,28 @@ export class PGDispatcher {
     private hcTimer?: Timeout | null;
     private isInit = false;
 
-    constructor({connections = [], options, knexOptions = {}, logger}: PDConstructorArgs) {
+    constructor({
+        connections = [],
+        options,
+        knexOptions = {},
+        logger,
+        onKnexCreated,
+    }: PDConstructorArgs) {
         if (!connections.length) {
             throw new Error('Empty connections list is not allowed');
         }
 
         this.connections = connections.map((connectionString) => {
             const url = new URL(connectionString);
+            const knex = knexBuilder({
+                ...knexOptions,
+                client: 'pg',
+                connection: connectionString,
+            });
+            onKnexCreated?.(knex);
             return {
                 host: url.hostname,
-                knex: knexBuilder({
-                    ...knexOptions,
-                    client: 'pg',
-                    connection: connectionString,
-                }),
+                knex,
                 primary: false,
                 healthy: false,
                 latency: Infinity,
