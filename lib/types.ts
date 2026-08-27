@@ -6,6 +6,7 @@ export type TopologyMode = 'primary-replica' | 'proxy';
 export interface PDOptions {
     healthcheckInterval: number;
     healthcheckTimeout: number;
+    healthcheckConsecutiveFailures?: number;
     suppressStatusLogs: boolean;
     beforeTerminate: () => Promise<void>;
     topologyMode: TopologyMode;

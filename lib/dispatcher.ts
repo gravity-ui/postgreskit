@@ -34,6 +34,7 @@ interface PDConnection {
     primary: boolean;
     healthy: boolean;
     latency: number;
+    consecutiveFailures: number;
 }
 
 interface PDCheckupResult {
@@ -79,6 +80,7 @@ export class PGDispatcher {
                 primary: false,
                 healthy: false,
                 latency: Infinity,
+                consecutiveFailures: 0,
             };
         });
         this.options = options;
@@ -204,7 +206,7 @@ export class PGDispatcher {
             const checkups = this.connections.map((connection) =>
                 this.checkDatabase(connection).catch((error) => {
                     this.logger.error({message: 'Unhandled error during database checkup', error});
-                    connection.healthy = false;
+                    this.setConnectionHealth(connection, false);
                     connection.primary = false;
                 }),
             );
@@ -266,7 +268,7 @@ export class PGDispatcher {
             connection.latency = new Date().getTime() - startTime;
 
             if (checkupResult) {
-                connection.healthy = checkupResult.pingOk;
+                this.setConnectionHealth(connection, checkupResult.pingOk);
                 connection.primary = checkupResult.primary;
             } else {
                 if (connection.latency > this.options.healthcheckTimeout) {
@@ -281,11 +283,11 @@ export class PGDispatcher {
                     });
                 }
 
-                connection.healthy = false;
+                this.setConnectionHealth(connection, false);
                 connection.primary = false;
             }
         } catch (error) {
-            connection.healthy = false;
+            this.setConnectionHealth(connection, false);
             connection.primary = false;
             this.logger.error({
                 message: 'Database checkup failed',
@@ -297,6 +299,22 @@ export class PGDispatcher {
 
     private async knexReady() {
         await Promise.all(this.connections.map((c) => c.knex));
+    }
+
+    private setConnectionHealth(connection: PDConnection, healthy: boolean) {
+        if (healthy) {
+            connection.consecutiveFailures = 0;
+            connection.healthy = true;
+
+            return;
+        }
+
+        connection.consecutiveFailures++;
+
+        const threshold = this.options.healthcheckConsecutiveFailures;
+        if (!threshold || connection.consecutiveFailures >= threshold) {
+            connection.healthy = false;
+        }
     }
 
     private get healthyConnections() {
