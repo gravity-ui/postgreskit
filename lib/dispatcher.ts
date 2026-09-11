@@ -217,9 +217,7 @@ export class PGDispatcher {
                 this.logger.info({
                     message: 'Database current status',
                     data: {
-                        ...(status.topologyMode === 'proxy'
-                            ? {topologyMode: status.topologyMode}
-                            : {}),
+                        ...(this.isProxyMode ? {topologyMode: this.options.topologyMode} : {}),
                         connections: status.connections,
                     },
                 });
@@ -303,11 +301,9 @@ export class PGDispatcher {
     }
 
     private getHealthcheckStatus(): PGHealthcheckStatus {
-        const topologyMode = this.options.topologyMode;
-
-        if (topologyMode === 'proxy') {
+        if (this.isProxyMode) {
             return {
-                topologyMode,
+                topologyMode: 'proxy',
                 connections: this.connections.map((connection) => ({
                     host: connection.host,
                     healthy: connection.healthy,
@@ -317,7 +313,7 @@ export class PGDispatcher {
         }
 
         return {
-            topologyMode,
+            topologyMode: 'primary-replica',
             connections: this.connections.map((connection) => ({
                 host: connection.host,
                 primary: connection.primary,
