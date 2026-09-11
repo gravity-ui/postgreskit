@@ -66,6 +66,23 @@ export const {db, CoreBaseModel, helpers} = initDB({
   - `topologyMode`: Connection topology, either `primary-replica` (the default) or `proxy`
 - `knexOptions`: Non-required additional options that will be passed to Knex before initialization
 - `onKnexCreated`: Optional callback called synchronously for each Knex instance created by the dispatcher, before database health checks start. Use it to attach instrumentation, event listeners, or plugins that do not require an active database connection. If it throws, initialization fails. The callback receives the Knex instance and returns nothing.
+- `onHealthcheck`: Optional callback called after each database health check with a snapshot of every host's availability, latency, and role. It is called even when `suppressStatusLogs` is enabled. Callback errors do not interrupt database routing or subsequent health checks.
+
+```typescript
+initDB({
+  connectionString: process.env.POSTGRES_DSN_LIST,
+  onHealthcheck(status) {
+    for (const connection of status.connections) {
+      console.log(connection.host, connection.healthy, connection.latency);
+    }
+    if (status.topologyMode === 'primary-replica') {
+      for (const connection of status.connections) {
+        console.log(connection.primary ? 'primary' : 'replica');
+      }
+    }
+  },
+});
+```
 
 When all connection strings point to equivalent proxy or router instances, such as SPQR routers, use `proxy` mode. Healthy endpoints are then eligible for both primary and replica queries, and the endpoint with the lowest latest health-check latency is selected:
 

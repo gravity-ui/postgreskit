@@ -3,6 +3,30 @@ import type {PGDispatcher} from './dispatcher';
 
 export type TopologyMode = 'primary-replica' | 'proxy';
 
+export interface PGConnectionStatus {
+    readonly host: string;
+    readonly healthy: boolean;
+    readonly latency: number;
+}
+
+export interface PGPrimaryReplicaConnectionStatus extends PGConnectionStatus {
+    readonly primary: boolean;
+}
+
+export interface PGPrimaryReplicaHealthcheckStatus {
+    readonly topologyMode: 'primary-replica';
+    readonly connections: readonly PGPrimaryReplicaConnectionStatus[];
+}
+
+export interface PGProxyHealthcheckStatus {
+    readonly topologyMode: 'proxy';
+    readonly connections: readonly PGConnectionStatus[];
+}
+
+export type PGHealthcheckStatus = PGPrimaryReplicaHealthcheckStatus | PGProxyHealthcheckStatus;
+
+export type PGHealthcheckHandler = (status: PGHealthcheckStatus) => void | Promise<void>;
+
 export interface PDOptions {
     healthcheckInterval: number;
     healthcheckTimeout: number;
