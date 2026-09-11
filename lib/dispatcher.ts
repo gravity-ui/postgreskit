@@ -303,9 +303,11 @@ export class PGDispatcher {
     }
 
     private getHealthcheckStatus(): PGHealthcheckStatus {
-        if (this.isProxyMode) {
+        const topologyMode = this.options.topologyMode;
+
+        if (topologyMode === 'proxy') {
             return {
-                topologyMode: 'proxy',
+                topologyMode,
                 connections: this.connections.map((connection) => ({
                     host: connection.host,
                     healthy: connection.healthy,
@@ -315,7 +317,7 @@ export class PGDispatcher {
         }
 
         return {
-            topologyMode: 'primary-replica',
+            topologyMode,
             connections: this.connections.map((connection) => ({
                 host: connection.host,
                 primary: connection.primary,
