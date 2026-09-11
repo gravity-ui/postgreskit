@@ -3,7 +3,14 @@ import {URL} from 'url';
 import knexBuilder from 'knex';
 import type {Knex} from 'knex';
 
-import type {Dict, ExLogger, PDOptions, PGHealthcheckHandler, PGHealthcheckStatus} from './types';
+import type {
+    Dict,
+    ExLogger,
+    PDOptions,
+    PGConnectionRole,
+    PGHealthcheckHandler,
+    PGHealthcheckStatus,
+} from './types';
 
 import Timeout = NodeJS.Timer;
 
@@ -55,6 +62,7 @@ export class PGDispatcher {
     private onHealthcheck?: PGHealthcheckHandler;
     private hcTimer?: Timeout | null;
     private isInit = false;
+    private isTerminating = false;
 
     constructor({
         connections = [],
@@ -124,6 +132,8 @@ export class PGDispatcher {
     }
 
     terminate() {
+        this.isTerminating = true;
+
         if (this.hcTimer) {
             clearInterval(this.hcTimer);
         }
@@ -204,6 +214,10 @@ export class PGDispatcher {
     private async initHealthcheck() {
         await this.knexReady();
 
+        if (this.isTerminating) {
+            return;
+        }
+
         const performHealthcheck = () => {
             const checkups = this.connections.map((connection) =>
                 this.checkDatabase(connection).catch((error) => {
@@ -213,12 +227,18 @@ export class PGDispatcher {
                 }),
             );
             Promise.all(checkups).then(() => {
+                // Connections hold shared current state; this is not an isolated per-cycle result.
                 const status = this.getHealthcheckStatus();
                 this.logger.info({
                     message: 'Database current status',
                     data: {
                         ...(this.isProxyMode ? {topologyMode: this.options.topologyMode} : {}),
-                        connections: status.connections,
+                        connections: this.connections.map((connection) => ({
+                            host: connection.host,
+                            ...(this.isProxyMode ? {} : {primary: connection.primary}),
+                            healthy: connection.healthy,
+                            latency: connection.latency,
+                        })),
                     },
                 });
                 this.notifyHealthcheck(status);
@@ -316,22 +336,28 @@ export class PGDispatcher {
             topologyMode: 'primary-replica',
             connections: this.connections.map((connection) => ({
                 host: connection.host,
-                primary: connection.primary,
+                role: this.getConnectionRole(connection),
                 healthy: connection.healthy,
                 latency: connection.latency,
             })),
         };
     }
 
+    private getConnectionRole(connection: PDConnection): PGConnectionRole {
+        if (!connection.healthy) {
+            return 'unknown';
+        }
+
+        return connection.primary ? 'primary' : 'replica';
+    }
+
     private notifyHealthcheck(status: PGHealthcheckStatus) {
-        if (!this.onHealthcheck) {
+        if (!this.onHealthcheck || this.isTerminating) {
             return;
         }
 
         try {
-            Promise.resolve(this.onHealthcheck(status)).catch((error) => {
-                this.reportHealthcheckCallbackError(error);
-            });
+            this.onHealthcheck(status);
         } catch (error) {
             this.reportHealthcheckCallbackError(error);
         }

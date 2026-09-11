@@ -9,8 +9,10 @@ export interface PGConnectionStatus {
     readonly latency: number;
 }
 
+export type PGConnectionRole = 'primary' | 'replica' | 'unknown';
+
 export interface PGPrimaryReplicaConnectionStatus extends PGConnectionStatus {
-    readonly primary: boolean;
+    readonly role: PGConnectionRole;
 }
 
 export interface PGPrimaryReplicaHealthcheckStatus {
@@ -25,7 +27,7 @@ export interface PGProxyHealthcheckStatus {
 
 export type PGHealthcheckStatus = PGPrimaryReplicaHealthcheckStatus | PGProxyHealthcheckStatus;
 
-export type PGHealthcheckHandler = (status: PGHealthcheckStatus) => void | Promise<void>;
+export type PGHealthcheckHandler = (status: PGHealthcheckStatus) => void;
 
 export interface PDOptions {
     healthcheckInterval: number;

@@ -153,7 +153,11 @@ describe('PGDispatcher healthcheck callback', () => {
         const primary = createKnex(successfulCheckup({pg_is_in_recovery: false}));
         const replica = createKnex(successfulCheckup({pg_is_in_recovery: true}));
         const unavailable = createKnex(failedCheckup);
-        const {dispatcher} = createDispatcher([primary, replica, unavailable], {}, onHealthcheck);
+        const {dispatcher, logger} = createDispatcher(
+            [primary, replica, unavailable],
+            {},
+            onHealthcheck,
+        );
 
         await dispatcher.ready();
         await new Promise((resolve) => setImmediate(resolve));
@@ -163,24 +167,33 @@ describe('PGDispatcher healthcheck callback', () => {
             connections: [
                 {
                     host: 'database-0.example',
-                    primary: true,
+                    role: 'primary',
                     healthy: true,
                     latency: expect.any(Number),
                 },
                 {
                     host: 'database-1.example',
-                    primary: false,
+                    role: 'replica',
                     healthy: true,
                     latency: expect.any(Number),
                 },
                 {
                     host: 'database-2.example',
-                    primary: false,
+                    role: 'unknown',
                     healthy: false,
                     latency: expect.any(Number),
                 },
             ],
         });
+
+        const statusLog = logger.info.mock.calls.find(
+            ([message]) => message === 'Database current status',
+        );
+        expect(statusLog[1].connections).toEqual([
+            expect.objectContaining({host: 'database-0.example', primary: true}),
+            expect.objectContaining({host: 'database-1.example', primary: false}),
+            expect.objectContaining({host: 'database-2.example', primary: false}),
+        ]);
     });
 
     test('reports proxy status without primary/replica roles when status logs are suppressed', async () => {
@@ -205,20 +218,14 @@ describe('PGDispatcher healthcheck callback', () => {
                 },
             ],
         });
-        expect(onHealthcheck.mock.calls[0][0].connections[0]).not.toHaveProperty('primary');
+        expect(onHealthcheck.mock.calls[0][0].connections[0]).not.toHaveProperty('role');
     });
 
-    test.each([
-        [
-            'synchronous',
-            (error) => () => {
-                throw error;
-            },
-        ],
-        ['asynchronous', (error) => () => Promise.reject(error)],
-    ])('isolates %s callback errors from database routing', async (_type, createCallback) => {
+    test('isolates callback errors from database routing', async () => {
         const callbackError = new Error('Healthcheck consumer failed');
-        const onHealthcheck = jest.fn(createCallback(callbackError));
+        const onHealthcheck = jest.fn(() => {
+            throw callbackError;
+        });
         const primary = createKnex(successfulCheckup({pg_is_in_recovery: false}));
         const {dispatcher, logger} = createDispatcher([primary], {}, onHealthcheck);
 
@@ -227,5 +234,22 @@ describe('PGDispatcher healthcheck callback', () => {
 
         expect(dispatcher.primary).toBe(primary);
         expect(logger.error).toHaveBeenCalledWith('PGDispatcher error', callbackError, undefined);
+    });
+
+    test('does not notify after termination starts', async () => {
+        let finishCheckup;
+        const checkup = () =>
+            new Promise((resolve) => {
+                finishCheckup = resolve;
+            });
+        const onHealthcheck = jest.fn();
+        const {dispatcher} = createDispatcher([createKnex(checkup)], {}, onHealthcheck);
+
+        await new Promise((resolve) => setImmediate(resolve));
+        await dispatcher.terminate();
+        finishCheckup({rows: [{pg_is_in_recovery: false}]});
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(onHealthcheck).not.toHaveBeenCalled();
     });
 });

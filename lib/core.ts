@@ -7,6 +7,7 @@ import {PGDispatcher} from './dispatcher';
 import type {BaseModel, ExLogger, PGHealthcheckHandler, TopologyMode} from './types';
 
 export type {
+    PGConnectionRole,
     PGConnectionStatus,
     PGHealthcheckHandler,
     PGHealthcheckStatus,
