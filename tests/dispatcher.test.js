@@ -30,7 +30,7 @@ function failedCheckup() {
     return Promise.reject(new Error('Proxy unavailable'));
 }
 
-function createDispatcher(clients, options = {}) {
+function createDispatcher(clients, options = {}, onHealthcheck) {
     clients.forEach((client) => knexBuilder.mockImplementationOnce(() => client));
 
     const logger = {
@@ -48,6 +48,7 @@ function createDispatcher(clients, options = {}) {
             healthcheckTimeout: 100,
             ...options,
         },
+        onHealthcheck,
     });
 
     activeDispatchers.push(dispatcher);
@@ -143,5 +144,112 @@ describe('PGDispatcher topology modes', () => {
                 }),
             );
         }
+    });
+});
+
+describe('PGDispatcher healthcheck callback', () => {
+    test('reports a snapshot for every primary and replica connection', async () => {
+        const onHealthcheck = jest.fn();
+        const primary = createKnex(successfulCheckup({pg_is_in_recovery: false}));
+        const replica = createKnex(successfulCheckup({pg_is_in_recovery: true}));
+        const unavailable = createKnex(failedCheckup);
+        const {dispatcher, logger} = createDispatcher(
+            [primary, replica, unavailable],
+            {},
+            onHealthcheck,
+        );
+
+        await dispatcher.ready();
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(onHealthcheck).toHaveBeenCalledWith({
+            topologyMode: 'primary-replica',
+            connections: [
+                {
+                    host: 'database-0.example',
+                    role: 'primary',
+                    healthy: true,
+                    latency: expect.any(Number),
+                },
+                {
+                    host: 'database-1.example',
+                    role: 'replica',
+                    healthy: true,
+                    latency: expect.any(Number),
+                },
+                {
+                    host: 'database-2.example',
+                    role: 'unknown',
+                    healthy: false,
+                    latency: expect.any(Number),
+                },
+            ],
+        });
+
+        const statusLog = logger.info.mock.calls.find(
+            ([message]) => message === 'Database current status',
+        );
+        expect(statusLog[1].connections).toEqual([
+            expect.objectContaining({host: 'database-0.example', primary: true}),
+            expect.objectContaining({host: 'database-1.example', primary: false}),
+            expect.objectContaining({host: 'database-2.example', primary: false}),
+        ]);
+    });
+
+    test('reports proxy status without primary/replica roles when status logs are suppressed', async () => {
+        const onHealthcheck = jest.fn();
+        const {dispatcher, logger} = createDispatcher(
+            [createKnex(successfulCheckup({value: 1}))],
+            {suppressStatusLogs: true, topologyMode: 'proxy'},
+            onHealthcheck,
+        );
+
+        await dispatcher.ready();
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(logger.info).not.toHaveBeenCalled();
+        expect(onHealthcheck).toHaveBeenCalledWith({
+            topologyMode: 'proxy',
+            connections: [
+                {
+                    host: 'database-0.example',
+                    healthy: true,
+                    latency: expect.any(Number),
+                },
+            ],
+        });
+        expect(onHealthcheck.mock.calls[0][0].connections[0]).not.toHaveProperty('role');
+    });
+
+    test('isolates callback errors from database routing', async () => {
+        const callbackError = new Error('Healthcheck consumer failed');
+        const onHealthcheck = jest.fn(() => {
+            throw callbackError;
+        });
+        const primary = createKnex(successfulCheckup({pg_is_in_recovery: false}));
+        const {dispatcher, logger} = createDispatcher([primary], {}, onHealthcheck);
+
+        await dispatcher.ready();
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(dispatcher.primary).toBe(primary);
+        expect(logger.error).toHaveBeenCalledWith('PGDispatcher error', callbackError, undefined);
+    });
+
+    test('does not notify after termination starts', async () => {
+        let finishCheckup;
+        const checkup = () =>
+            new Promise((resolve) => {
+                finishCheckup = resolve;
+            });
+        const onHealthcheck = jest.fn();
+        const {dispatcher} = createDispatcher([createKnex(checkup)], {}, onHealthcheck);
+
+        await new Promise((resolve) => setImmediate(resolve));
+        await dispatcher.terminate();
+        finishCheckup({rows: [{pg_is_in_recovery: false}]});
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(onHealthcheck).not.toHaveBeenCalled();
     });
 });

@@ -4,9 +4,18 @@ import {type Constructor, Model} from 'objection';
 
 import {defaultDispatcherOptions, defaultExLogger, defaultKnexOptions} from './constants';
 import {PGDispatcher} from './dispatcher';
-import type {BaseModel, ExLogger, TopologyMode} from './types';
+import type {BaseModel, ExLogger, PGHealthcheckHandler, TopologyMode} from './types';
 
-export type {TopologyMode} from './types';
+export type {
+    PGConnectionRole,
+    PGConnectionStatus,
+    PGHealthcheckHandler,
+    PGHealthcheckStatus,
+    PGPrimaryReplicaConnectionStatus,
+    PGPrimaryReplicaHealthcheckStatus,
+    PGProxyHealthcheckStatus,
+    TopologyMode,
+} from './types';
 
 export interface CoreDBDispatcherOptions {
     healthcheckInterval?: number;
@@ -25,6 +34,7 @@ export interface CoreDBConstructorArgs {
     logger?: ExLogger;
     modelParams?: GetModelParams;
     onKnexCreated?: (knex: Knex) => void;
+    onHealthcheck?: PGHealthcheckHandler;
 }
 
 export function getModel(params: GetModelParams = {}): typeof BaseModel {
@@ -89,6 +99,7 @@ export function initDB({
     logger = defaultExLogger,
     modelParams,
     onKnexCreated,
+    onHealthcheck,
 }: CoreDBConstructorArgs) {
     if (!connectionString) {
         throw new Error('Empty connection string');
@@ -102,6 +113,7 @@ export function initDB({
         knexOptions: mergedKnexOptions,
         logger,
         onKnexCreated,
+        onHealthcheck,
     });
 
     const terminate = () => {

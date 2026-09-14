@@ -3,7 +3,14 @@ import {URL} from 'url';
 import knexBuilder from 'knex';
 import type {Knex} from 'knex';
 
-import type {Dict, ExLogger, PDOptions} from './types';
+import type {
+    Dict,
+    ExLogger,
+    PDOptions,
+    PGConnectionRole,
+    PGHealthcheckHandler,
+    PGHealthcheckStatus,
+} from './types';
 
 import Timeout = NodeJS.Timer;
 
@@ -26,6 +33,7 @@ export interface PDConstructorArgs {
     logger: ExLogger;
 
     onKnexCreated?: (knex: Knex) => void;
+    onHealthcheck?: PGHealthcheckHandler;
 }
 
 interface PDConnection {
@@ -51,8 +59,10 @@ export class PGDispatcher {
     private connections: PDConnection[];
     private options: PDOptions;
     private logger: {info: InfoLogger; error: ErrorLogger};
+    private onHealthcheck?: PGHealthcheckHandler;
     private hcTimer?: Timeout | null;
     private isInit = false;
+    private isTerminating = false;
 
     constructor({
         connections = [],
@@ -60,6 +70,7 @@ export class PGDispatcher {
         knexOptions = {},
         logger,
         onKnexCreated,
+        onHealthcheck,
     }: PDConstructorArgs) {
         if (!connections.length) {
             throw new Error('Empty connections list is not allowed');
@@ -83,6 +94,7 @@ export class PGDispatcher {
         });
         this.options = options;
         this.knexOptions = knexOptions;
+        this.onHealthcheck = onHealthcheck;
 
         this.logger = {
             info: ({message, data}) => {
@@ -120,6 +132,8 @@ export class PGDispatcher {
     }
 
     terminate() {
+        this.isTerminating = true;
+
         if (this.hcTimer) {
             clearInterval(this.hcTimer);
         }
@@ -200,6 +214,10 @@ export class PGDispatcher {
     private async initHealthcheck() {
         await this.knexReady();
 
+        if (this.isTerminating) {
+            return;
+        }
+
         const performHealthcheck = () => {
             const checkups = this.connections.map((connection) =>
                 this.checkDatabase(connection).catch((error) => {
@@ -209,18 +227,21 @@ export class PGDispatcher {
                 }),
             );
             Promise.all(checkups).then(() => {
+                // Connections hold shared current state; this is not an isolated per-cycle result.
+                const status = this.getHealthcheckStatus();
                 this.logger.info({
                     message: 'Database current status',
                     data: {
                         ...(this.isProxyMode ? {topologyMode: this.options.topologyMode} : {}),
-                        connections: this.connections.map((c) => ({
-                            host: c.host,
-                            ...(this.isProxyMode ? {} : {primary: c.primary}),
-                            healthy: c.healthy,
-                            latency: c.latency,
+                        connections: this.connections.map((connection) => ({
+                            host: connection.host,
+                            ...(this.isProxyMode ? {} : {primary: connection.primary}),
+                            healthy: connection.healthy,
+                            latency: connection.latency,
                         })),
                     },
                 });
+                this.notifyHealthcheck(status);
             });
         };
 
@@ -297,6 +318,56 @@ export class PGDispatcher {
 
     private async knexReady() {
         await Promise.all(this.connections.map((c) => c.knex));
+    }
+
+    private getHealthcheckStatus(): PGHealthcheckStatus {
+        if (this.isProxyMode) {
+            return {
+                topologyMode: 'proxy',
+                connections: this.connections.map((connection) => ({
+                    host: connection.host,
+                    healthy: connection.healthy,
+                    latency: connection.latency,
+                })),
+            };
+        }
+
+        return {
+            topologyMode: 'primary-replica',
+            connections: this.connections.map((connection) => ({
+                host: connection.host,
+                role: this.getConnectionRole(connection),
+                healthy: connection.healthy,
+                latency: connection.latency,
+            })),
+        };
+    }
+
+    private getConnectionRole(connection: PDConnection): PGConnectionRole {
+        if (!connection.healthy) {
+            return 'unknown';
+        }
+
+        return connection.primary ? 'primary' : 'replica';
+    }
+
+    private notifyHealthcheck(status: PGHealthcheckStatus) {
+        if (!this.onHealthcheck || this.isTerminating) {
+            return;
+        }
+
+        try {
+            this.onHealthcheck(status);
+        } catch (error) {
+            this.reportHealthcheckCallbackError(error);
+        }
+    }
+
+    private reportHealthcheckCallbackError(error: unknown) {
+        this.logger.error({
+            message: 'Database healthcheck callback failed',
+            error: error as Error,
+        });
     }
 
     private get healthyConnections() {
