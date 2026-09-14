@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.4.0](https://github.com/gravity-ui/postgreskit/compare/v3.3.1...v3.4.0) (2026-09-14)
+
+
+### Features
+
+* add database healthcheck callback ([#39](https://github.com/gravity-ui/postgreskit/issues/39)) ([0f7aa0c](https://github.com/gravity-ui/postgreskit/commit/0f7aa0c3999fe2526c34f52677cd0cb47a1be5f1))
+
 ## [3.3.1](https://github.com/gravity-ui/postgreskit/compare/v3.3.0...v3.3.1) (2026-08-26)
 
 
