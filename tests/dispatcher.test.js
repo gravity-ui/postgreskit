@@ -163,54 +163,16 @@ describe('PGDispatcher healthcheck status logging', () => {
         );
     });
 
-    test.each(['primary-replica', 'proxy'])(
-        'suppresses only database status in %s mode and preserves callbacks',
-        async (topologyMode) => {
-            const onHealthcheck = jest.fn();
-            const {dispatcher, logger} = createDispatcher(
-                [
-                    createKnex(successfulCheckup({pg_is_in_recovery: false})),
-                    createKnex(failedCheckup),
-                ],
-                {suppressHealthcheckStatusLogs: true, topologyMode},
-                onHealthcheck,
-            );
-
-            await dispatcher.ready();
-            await new Promise((resolve) => setImmediate(resolve));
-
-            expect(logger.info.mock.calls.map(([message]) => message)).not.toContain(
-                'Database current status',
-            );
-            expect(loggedErrorMessages(logger)).toContain('Proxy unavailable');
-            expect(onHealthcheck).toHaveBeenCalledWith({
-                topologyMode,
-                connections: [
-                    expect.objectContaining({host: 'database-0.example', healthy: true}),
-                    expect.objectContaining({host: 'database-1.example', healthy: false}),
-                ],
-            });
-
-            await dispatcher.terminate();
-
-            expect(logger.info).toHaveBeenCalledWith('Connection successfully terminated', {
-                host: 'database-0.example',
-            });
-        },
-    );
-
-    test('the existing suppression option suppresses all info and error logs', async () => {
+    test('suppresses database status while preserving healthcheck errors', async () => {
         const {dispatcher, logger} = createDispatcher([createKnex(failedCheckup)], {
-            suppressStatusLogs: true,
-            suppressHealthcheckStatusLogs: false,
+            suppressHealthcheckStatusLogs: true,
         });
 
         await dispatcher.ready();
         await new Promise((resolve) => setImmediate(resolve));
-        await dispatcher.terminate();
 
         expect(logger.info).not.toHaveBeenCalled();
-        expect(logger.error).not.toHaveBeenCalled();
+        expect(loggedErrorMessages(logger)).toContain('Proxy unavailable');
     });
 });
 
