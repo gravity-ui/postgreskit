@@ -33,6 +33,10 @@ export interface PDOptions {
     healthcheckInterval: number;
     healthcheckTimeout: number;
     suppressStatusLogs: boolean;
+    /**
+     * suppresses only [Database current status] logs, preserving dispatcher errors and other logs
+     */
+    suppressHealthcheckStatusLogs?: boolean;
     beforeTerminate: () => Promise<void>;
     topologyMode: TopologyMode;
 }

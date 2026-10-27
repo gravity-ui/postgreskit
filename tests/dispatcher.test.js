@@ -147,6 +147,73 @@ describe('PGDispatcher topology modes', () => {
     });
 });
 
+describe('PGDispatcher healthcheck status logging', () => {
+    test('logs database status by default', async () => {
+        const {dispatcher, logger} = createDispatcher([
+            createKnex(successfulCheckup({pg_is_in_recovery: false})),
+        ]);
+
+        await dispatcher.ready();
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(defaultDispatcherOptions.suppressHealthcheckStatusLogs).toBe(false);
+        expect(logger.info).toHaveBeenCalledWith(
+            'Database current status',
+            expect.objectContaining({connections: expect.any(Array)}),
+        );
+    });
+
+    test.each(['primary-replica', 'proxy'])(
+        'suppresses only database status in %s mode and preserves callbacks',
+        async (topologyMode) => {
+            const onHealthcheck = jest.fn();
+            const {dispatcher, logger} = createDispatcher(
+                [
+                    createKnex(successfulCheckup({pg_is_in_recovery: false})),
+                    createKnex(failedCheckup),
+                ],
+                {suppressHealthcheckStatusLogs: true, topologyMode},
+                onHealthcheck,
+            );
+
+            await dispatcher.ready();
+            await new Promise((resolve) => setImmediate(resolve));
+
+            expect(logger.info.mock.calls.map(([message]) => message)).not.toContain(
+                'Database current status',
+            );
+            expect(loggedErrorMessages(logger)).toContain('Proxy unavailable');
+            expect(onHealthcheck).toHaveBeenCalledWith({
+                topologyMode,
+                connections: [
+                    expect.objectContaining({host: 'database-0.example', healthy: true}),
+                    expect.objectContaining({host: 'database-1.example', healthy: false}),
+                ],
+            });
+
+            await dispatcher.terminate();
+
+            expect(logger.info).toHaveBeenCalledWith('Connection successfully terminated', {
+                host: 'database-0.example',
+            });
+        },
+    );
+
+    test('the existing suppression option suppresses all info and error logs', async () => {
+        const {dispatcher, logger} = createDispatcher([createKnex(failedCheckup)], {
+            suppressStatusLogs: true,
+            suppressHealthcheckStatusLogs: false,
+        });
+
+        await dispatcher.ready();
+        await new Promise((resolve) => setImmediate(resolve));
+        await dispatcher.terminate();
+
+        expect(logger.info).not.toHaveBeenCalled();
+        expect(logger.error).not.toHaveBeenCalled();
+    });
+});
+
 describe('PGDispatcher healthcheck callback', () => {
     test('reports a snapshot for every primary and replica connection', async () => {
         const onHealthcheck = jest.fn();

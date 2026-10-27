@@ -229,18 +229,20 @@ export class PGDispatcher {
             Promise.all(checkups).then(() => {
                 // Connections hold shared current state; this is not an isolated per-cycle result.
                 const status = this.getHealthcheckStatus();
-                this.logger.info({
-                    message: 'Database current status',
-                    data: {
-                        ...(this.isProxyMode ? {topologyMode: this.options.topologyMode} : {}),
-                        connections: this.connections.map((connection) => ({
-                            host: connection.host,
-                            ...(this.isProxyMode ? {} : {primary: connection.primary}),
-                            healthy: connection.healthy,
-                            latency: connection.latency,
-                        })),
-                    },
-                });
+                if (!this.options.suppressHealthcheckStatusLogs) {
+                    this.logger.info({
+                        message: 'Database current status',
+                        data: {
+                            ...(this.isProxyMode ? {topologyMode: this.options.topologyMode} : {}),
+                            connections: this.connections.map((connection) => ({
+                                host: connection.host,
+                                ...(this.isProxyMode ? {} : {primary: connection.primary}),
+                                healthy: connection.healthy,
+                                latency: connection.latency,
+                            })),
+                        },
+                    });
+                }
                 this.notifyHealthcheck(status);
             });
         };

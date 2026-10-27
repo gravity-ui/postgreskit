@@ -21,6 +21,7 @@ export interface CoreDBDispatcherOptions {
     healthcheckInterval?: number;
     healthcheckTimeout?: number;
     suppressStatusLogs?: boolean;
+    suppressHealthcheckStatusLogs?: boolean;
     beforeTerminate?: () => Promise<void>;
     topologyMode?: TopologyMode;
 }
