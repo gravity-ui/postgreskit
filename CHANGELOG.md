@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.5.0](https://github.com/gravity-ui/postgreskit/compare/v3.4.0...v3.5.0) (2026-10-29)
+
+
+### Features
+
+* add healthcheck status log suppression ([#41](https://github.com/gravity-ui/postgreskit/issues/41)) ([efbd1f6](https://github.com/gravity-ui/postgreskit/commit/efbd1f66a94e89ddf14014658a215f80ef11e9f9))
+
 ## [3.4.0](https://github.com/gravity-ui/postgreskit/compare/v3.3.1...v3.4.0) (2026-09-14)
 
 
