@@ -19,6 +19,7 @@ export const defaultDispatcherOptions: PDOptions = {
     healthcheckInterval: 5000,
     healthcheckTimeout: 700,
     suppressStatusLogs: false,
+    suppressHealthcheckStatusLogs: false,
     beforeTerminate: () => Promise.resolve(),
     topologyMode: 'primary-replica',
 };

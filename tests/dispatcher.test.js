@@ -147,6 +147,35 @@ describe('PGDispatcher topology modes', () => {
     });
 });
 
+describe('PGDispatcher healthcheck status logging', () => {
+    test('logs database status by default', async () => {
+        const {dispatcher, logger} = createDispatcher([
+            createKnex(successfulCheckup({pg_is_in_recovery: false})),
+        ]);
+
+        await dispatcher.ready();
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(defaultDispatcherOptions.suppressHealthcheckStatusLogs).toBe(false);
+        expect(logger.info).toHaveBeenCalledWith(
+            'Database current status',
+            expect.objectContaining({connections: expect.any(Array)}),
+        );
+    });
+
+    test('suppresses database status while preserving healthcheck errors', async () => {
+        const {dispatcher, logger} = createDispatcher([createKnex(failedCheckup)], {
+            suppressHealthcheckStatusLogs: true,
+        });
+
+        await dispatcher.ready();
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(logger.info).not.toHaveBeenCalled();
+        expect(loggedErrorMessages(logger)).toContain('Proxy unavailable');
+    });
+});
+
 describe('PGDispatcher healthcheck callback', () => {
     test('reports a snapshot for every primary and replica connection', async () => {
         const onHealthcheck = jest.fn();
