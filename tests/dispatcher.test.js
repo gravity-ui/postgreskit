@@ -282,3 +282,43 @@ describe('PGDispatcher healthcheck callback', () => {
         expect(onHealthcheck).not.toHaveBeenCalled();
     });
 });
+
+describe('PGDispatcher healthcheck timer cleanup', () => {
+    beforeEach(() => {
+        jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+        jest.useRealTimers();
+    });
+
+    test.each(['success', 'failure'])(
+        'clears healthcheck deadlines after query %s and termination',
+        async (result) => {
+            const checkup =
+                result === 'success'
+                    ? () => Promise.resolve({rows: [{pg_is_in_recovery: false}]})
+                    : failedCheckup;
+            const {dispatcher} = createDispatcher([createKnex(checkup)]);
+
+            await dispatcher.ready();
+            await dispatcher.terminate();
+
+            expect(jest.getTimerCount()).toBe(0);
+        },
+    );
+
+    test('retains the deadline for a healthcheck that never completes', async () => {
+        const {dispatcher} = createDispatcher([createKnex(() => new Promise(() => {}))]);
+        const ready = dispatcher.ready();
+
+        await jest.advanceTimersByTimeAsync(110);
+        await ready;
+
+        expect(() => dispatcher.primary).toThrow(
+            expect.objectContaining({code: 'ERR_DB_NOT_AVAILABLE'}),
+        );
+        await dispatcher.terminate();
+        expect(jest.getTimerCount()).toBe(0);
+    });
+});
