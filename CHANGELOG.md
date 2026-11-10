@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.5.1](https://github.com/gravity-ui/postgreskit/compare/v3.5.0...v3.5.1) (2026-11-10)
+
+
+### Bug Fixes
+
+* clear healthcheck deadline timers ([#43](https://github.com/gravity-ui/postgreskit/issues/43)) ([61771f2](https://github.com/gravity-ui/postgreskit/commit/61771f23d844bc4dad617cd73bbb74e2914baece))
+
 ## [3.5.0](https://github.com/gravity-ui/postgreskit/compare/v3.4.0...v3.5.0) (2026-10-29)
 
 
