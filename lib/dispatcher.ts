@@ -275,6 +275,8 @@ export class PGDispatcher {
     }
 
     private async checkDatabase(connection: PDConnection) {
+        let deadline: ReturnType<typeof setTimeout> | undefined;
+
         try {
             const startTime = new Date().getTime();
             type RaceCheckupResult = PDCheckupResult | null;
@@ -283,7 +285,10 @@ export class PGDispatcher {
                     this.logger.error({message: 'Error performing database checkup', error});
                 }),
                 new Promise((resolve) => {
-                    setTimeout(() => resolve(null), this.options.healthcheckTimeout + 10);
+                    deadline = setTimeout(
+                        () => resolve(null),
+                        this.options.healthcheckTimeout + 10,
+                    );
                 }),
             ])) as RaceCheckupResult;
             connection.latency = new Date().getTime() - startTime;
@@ -315,6 +320,10 @@ export class PGDispatcher {
                 error: error as Error,
                 data: {host: connection.host},
             });
+        } finally {
+            if (deadline !== undefined) {
+                clearTimeout(deadline);
+            }
         }
     }
 
