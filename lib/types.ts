@@ -3,6 +3,30 @@ import type {PGDispatcher} from './dispatcher';
 
 export type TopologyMode = 'primary-replica' | 'proxy';
 
+/**
+ * always the connection with the lowest latest health-check latency;
+ * among equally fast ones, the first in the connections list (default)
+ */
+export interface FastestBalancingStrategy {
+    kind: 'fastest';
+}
+
+/**
+ * every healthy connection in turn; with `latencyTolerance`, only those whose latest
+ * health-check latency is within that many ms of the lowest one
+ */
+export interface RoundRobinBalancingStrategy {
+    kind: 'round-robin';
+    /**
+     * latency window in ms: when set, only connections whose latest health-check latency
+     * is within this value of the lowest one are rotated (0 — only the fastest ones).
+     * When omitted, all healthy connections are rotated
+     */
+    latencyTolerance?: number;
+}
+
+export type BalancingStrategy = FastestBalancingStrategy | RoundRobinBalancingStrategy;
+
 export interface PGConnectionStatus {
     readonly host: string;
     readonly healthy: boolean;
@@ -39,6 +63,7 @@ export interface PDOptions {
     suppressHealthcheckStatusLogs?: boolean;
     beforeTerminate: () => Promise<void>;
     topologyMode: TopologyMode;
+    balancingStrategy?: BalancingStrategy;
 }
 
 export type Dict = {[key: string]: unknown};

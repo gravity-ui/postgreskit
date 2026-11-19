@@ -4,6 +4,7 @@ import knexBuilder from 'knex';
 import type {Knex} from 'knex';
 
 import type {
+    BalancingStrategy,
     Dict,
     ExLogger,
     PDOptions,
@@ -49,6 +50,40 @@ interface PDCheckupResult {
     primary: boolean;
 }
 
+// returns the first connection with the lowest latency, so ties go to the earliest one
+function fastestConnection(candidates: PDConnection[]) {
+    let fastest = candidates[0];
+
+    for (const candidate of candidates) {
+        if (candidate.latency < fastest.latency) {
+            fastest = candidate;
+        }
+    }
+
+    return fastest;
+}
+
+function validateBalancingStrategy(strategy?: BalancingStrategy): BalancingStrategy {
+    if (strategy?.kind !== 'round-robin') {
+        return {kind: 'fastest'};
+    }
+
+    const {latencyTolerance} = strategy;
+
+    if (
+        latencyTolerance !== undefined &&
+        (!Number.isFinite(latencyTolerance) || latencyTolerance < 0)
+    ) {
+        throw new Error(
+            `balancingStrategy.latencyTolerance must be a non-negative finite number, got ${String(
+                latencyTolerance,
+            )}`,
+        );
+    }
+
+    return {kind: 'round-robin', latencyTolerance};
+}
+
 export class PDError extends Error {
     code?: string;
 }
@@ -63,6 +98,8 @@ export class PGDispatcher {
     private hcTimer?: Timeout | null;
     private isInit = false;
     private isTerminating = false;
+    private readonly balancingStrategy: BalancingStrategy;
+    private balancingCursor = 0;
 
     constructor({
         connections = [],
@@ -75,6 +112,8 @@ export class PGDispatcher {
         if (!connections.length) {
             throw new Error('Empty connections list is not allowed');
         }
+
+        this.balancingStrategy = validateBalancingStrategy(options.balancingStrategy);
 
         this.connections = connections.map((connectionString) => {
             const url = new URL(connectionString);
@@ -163,7 +202,7 @@ export class PGDispatcher {
         this.checkConnectionsAvailability();
 
         if (this.isProxyMode) {
-            return this.fastestHealthyConnection.knex;
+            return this.selectConnection(this.healthyConnections).knex;
         }
 
         const primaryConnections = this.connections.filter((c) => c.primary);
@@ -189,14 +228,13 @@ export class PGDispatcher {
         this.checkConnectionsAvailability();
 
         if (this.isProxyMode) {
-            return this.fastestHealthyConnection.knex;
+            return this.selectConnection(this.healthyConnections).knex;
         }
 
         const replicaConnections = this.healthyConnections.filter((c) => !c.primary);
 
         if (replicaConnections.length) {
-            const fastestReplica = replicaConnections.sort((a, b) => a.latency - b.latency)[0];
-            return fastestReplica.knex;
+            return this.selectConnection(replicaConnections).knex;
         }
         if (this.connections.length > 1) {
             this.logger.error({message: 'No alive replica available, using master for read'});
@@ -389,8 +427,32 @@ export class PGDispatcher {
         return this.options.topologyMode === 'proxy';
     }
 
-    private get fastestHealthyConnection() {
-        return this.healthyConnections.sort((a, b) => a.latency - b.latency)[0];
+    // `candidates` must be non-empty.
+    private selectConnection(candidates: PDConnection[]) {
+        const strategy = this.balancingStrategy;
+
+        if (strategy.kind === 'round-robin') {
+            return this.selectRoundRobin(candidates, strategy.latencyTolerance);
+        }
+
+        return fastestConnection(candidates);
+    }
+
+    // Rotates between all connections or, when `latencyTolerance` is set, only those whose
+    // latest health-check latency is within `latencyTolerance` ms of the fastest one.
+    private selectRoundRobin(candidates: PDConnection[], latencyTolerance?: number) {
+        let eligible = candidates;
+
+        if (latencyTolerance !== undefined) {
+            const minLatency = fastestConnection(candidates).latency;
+            eligible = candidates.filter((c) => c.latency <= minLatency + latencyTolerance);
+        }
+
+        // the window may shrink between health checks, so wrap the stored position into it
+        const index = this.balancingCursor % eligible.length;
+        this.balancingCursor = index + 1;
+
+        return eligible[index];
     }
 
     private checkConnectionsAvailability() {
