@@ -366,8 +366,8 @@ describe('PGDispatcher balancing strategies', () => {
     });
 
     test.each([-1, NaN, Infinity, null, '10'])(
-        'rejects an invalid latencyTolerance: %p',
-        (latencyTolerance) => {
+        'rejects an invalid latencyToleranceMs: %p',
+        (latencyToleranceMs) => {
             // validation runs before any knex instance is created, so no knex mocks are queued
             expect(
                 () =>
@@ -376,20 +376,20 @@ describe('PGDispatcher balancing strategies', () => {
                         logger: {info: jest.fn(), error: jest.fn()},
                         options: {
                             ...defaultDispatcherOptions,
-                            balancingStrategy: {kind: 'round-robin', latencyTolerance},
+                            balancingStrategy: {kind: 'round-robin', latencyToleranceMs},
                         },
                     }),
-            ).toThrow('balancingStrategy.latencyTolerance must be a non-negative finite number');
+            ).toThrow('balancingStrategy.latencyToleranceMs must be a non-negative finite number');
         },
     );
 
     test('uses the validated strategy after the original options are changed', async () => {
-        const balancingStrategy = {kind: 'round-robin', latencyTolerance: 10};
+        const balancingStrategy = {kind: 'round-robin', latencyToleranceMs: 10};
         const {dispatcher, replicas} = createReplicaSet(2, {balancingStrategy});
 
         await dispatcher.ready();
         setLatencies(dispatcher, [1, 1, 2]);
-        balancingStrategy.latencyTolerance = -1;
+        balancingStrategy.latencyToleranceMs = -1;
 
         expect(pick(dispatcher, 'replica', 2)).toEqual(replicas);
     });
@@ -424,7 +424,7 @@ describe('PGDispatcher balancing strategies', () => {
 
     test('round-robin with a zero window rotates only equally fast replicas', async () => {
         const {dispatcher, replicas} = createReplicaSet(3, {
-            balancingStrategy: {kind: 'round-robin', latencyTolerance: 0},
+            balancingStrategy: {kind: 'round-robin', latencyToleranceMs: 0},
         });
 
         await dispatcher.ready();
@@ -440,7 +440,7 @@ describe('PGDispatcher balancing strategies', () => {
 
     test('rotates replicas whose latency is within the tolerance window', async () => {
         const {dispatcher, replicas} = createReplicaSet(3, {
-            balancingStrategy: {kind: 'round-robin', latencyTolerance: 10},
+            balancingStrategy: {kind: 'round-robin', latencyToleranceMs: 10},
         });
 
         await dispatcher.ready();
@@ -471,7 +471,7 @@ describe('PGDispatcher balancing strategies', () => {
 
     test('keeps rotating evenly after the window shrinks', async () => {
         const {dispatcher, replicas} = createReplicaSet(3, {
-            balancingStrategy: {kind: 'round-robin', latencyTolerance: 0},
+            balancingStrategy: {kind: 'round-robin', latencyToleranceMs: 0},
         });
 
         await dispatcher.ready();
@@ -492,7 +492,7 @@ describe('PGDispatcher balancing strategies', () => {
         const proxies = [0, 1, 2].map(() => createKnex(successfulCheckup({value: 1})));
         const {dispatcher} = createDispatcher(proxies, {
             topologyMode: 'proxy',
-            balancingStrategy: {kind: 'round-robin', latencyTolerance: 10},
+            balancingStrategy: {kind: 'round-robin', latencyToleranceMs: 10},
         });
 
         await dispatcher.ready();

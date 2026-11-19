@@ -68,20 +68,20 @@ function validateBalancingStrategy(strategy?: BalancingStrategy): BalancingStrat
         return {kind: 'fastest'};
     }
 
-    const {latencyTolerance} = strategy;
+    const {latencyToleranceMs} = strategy;
 
     if (
-        latencyTolerance !== undefined &&
-        (!Number.isFinite(latencyTolerance) || latencyTolerance < 0)
+        latencyToleranceMs !== undefined &&
+        (!Number.isFinite(latencyToleranceMs) || latencyToleranceMs < 0)
     ) {
         throw new Error(
-            `balancingStrategy.latencyTolerance must be a non-negative finite number, got ${String(
-                latencyTolerance,
+            `balancingStrategy.latencyToleranceMs must be a non-negative finite number, got ${String(
+                latencyToleranceMs,
             )}`,
         );
     }
 
-    return {kind: 'round-robin', latencyTolerance};
+    return {kind: 'round-robin', latencyToleranceMs};
 }
 
 export class PDError extends Error {
@@ -432,20 +432,20 @@ export class PGDispatcher {
         const strategy = this.balancingStrategy;
 
         if (strategy.kind === 'round-robin') {
-            return this.selectRoundRobin(candidates, strategy.latencyTolerance);
+            return this.selectRoundRobin(candidates, strategy.latencyToleranceMs);
         }
 
         return fastestConnection(candidates);
     }
 
-    // Rotates between all connections or, when `latencyTolerance` is set, only those whose
-    // latest health-check latency is within `latencyTolerance` ms of the fastest one.
-    private selectRoundRobin(candidates: PDConnection[], latencyTolerance?: number) {
+    // Rotates between all connections or, when `latencyToleranceMs` is set, only those whose
+    // latest health-check latency is within `latencyToleranceMs` of the fastest one.
+    private selectRoundRobin(candidates: PDConnection[], latencyToleranceMs?: number) {
         let eligible = candidates;
 
-        if (latencyTolerance !== undefined) {
+        if (latencyToleranceMs !== undefined) {
             const minLatency = fastestConnection(candidates).latency;
-            eligible = candidates.filter((c) => c.latency <= minLatency + latencyTolerance);
+            eligible = candidates.filter((c) => c.latency <= minLatency + latencyToleranceMs);
         }
 
         // the window may shrink between health checks, so wrap the stored position into it

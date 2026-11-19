@@ -12,7 +12,7 @@ export interface FastestBalancingStrategy {
 }
 
 /**
- * every healthy connection in turn; with `latencyTolerance`, only those whose latest
+ * every healthy connection in turn; with `latencyToleranceMs`, only those whose latest
  * health-check latency is within that many ms of the lowest one
  */
 export interface RoundRobinBalancingStrategy {
@@ -22,7 +22,7 @@ export interface RoundRobinBalancingStrategy {
      * is within this value of the lowest one are rotated (0 — only the fastest ones).
      * When omitted, all healthy connections are rotated
      */
-    latencyTolerance?: number;
+    latencyToleranceMs?: number;
 }
 
 export type BalancingStrategy = FastestBalancingStrategy | RoundRobinBalancingStrategy;
