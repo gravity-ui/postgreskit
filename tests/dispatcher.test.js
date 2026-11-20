@@ -5,6 +5,7 @@ jest.mock('knex', () => jest.fn());
 const knexBuilder = require('knex');
 
 const {defaultDispatcherOptions} = require('../build/constants');
+const {initDB} = require('../build/core');
 const {PGDispatcher} = require('../build/dispatcher');
 
 const activeDispatchers = [];
@@ -320,5 +321,185 @@ describe('PGDispatcher healthcheck timer cleanup', () => {
         );
         await dispatcher.terminate();
         expect(jest.getTimerCount()).toBe(0);
+    });
+});
+
+describe('PGDispatcher balancing strategies', () => {
+    function pick(dispatcher, role, times) {
+        return Array.from({length: times}, () => dispatcher[role]);
+    }
+
+    // health-check latencies are measured with real timers; pin them to avoid jitter
+    function setLatencies(dispatcher, latencies) {
+        dispatcher.connections.forEach((connection, index) => {
+            connection.latency = latencies[index];
+        });
+    }
+
+    function createReplicaSet(replicaCount, options) {
+        const primary = createKnex(successfulCheckup({pg_is_in_recovery: false}));
+        const replicas = Array.from({length: replicaCount}, () =>
+            createKnex(successfulCheckup({pg_is_in_recovery: true})),
+        );
+        const {dispatcher} = createDispatcher([primary, ...replicas], options);
+
+        return {dispatcher, primary, replicas};
+    }
+
+    test('routes to the fastest replica when no balancing strategy is provided', async () => {
+        const {dispatcher, primary, replicas} = createReplicaSet(3);
+
+        await dispatcher.ready();
+        setLatencies(dispatcher, [1, 3, 1, 2]);
+
+        expect(new Set(pick(dispatcher, 'replica', 4))).toEqual(new Set([replicas[1]]));
+        expect(dispatcher.primary).toBe(primary);
+    });
+
+    test('fastest does not rotate equally fast replicas', async () => {
+        const {dispatcher, replicas} = createReplicaSet(3, {balancingStrategy: {kind: 'fastest'}});
+
+        await dispatcher.ready();
+        setLatencies(dispatcher, [1, 1, 1, 2]);
+
+        expect(new Set(pick(dispatcher, 'replica', 4))).toEqual(new Set([replicas[0]]));
+    });
+
+    test.each([-1, NaN, Infinity, null, '10'])(
+        'rejects an invalid latencyToleranceMs: %p',
+        (latencyToleranceMs) => {
+            // validation runs before any knex instance is created, so no knex mocks are queued
+            expect(
+                () =>
+                    new PGDispatcher({
+                        connections: ['postgresql://user:password@database-0.example/db'],
+                        logger: {info: jest.fn(), error: jest.fn()},
+                        options: {
+                            ...defaultDispatcherOptions,
+                            balancingStrategy: {kind: 'round-robin', latencyToleranceMs},
+                        },
+                    }),
+            ).toThrow('balancingStrategy.latencyToleranceMs must be a non-negative finite number');
+        },
+    );
+
+    test('uses the validated strategy after the original options are changed', async () => {
+        const balancingStrategy = {kind: 'round-robin', latencyToleranceMs: 10};
+        const {dispatcher, replicas} = createReplicaSet(2, {balancingStrategy});
+
+        await dispatcher.ready();
+        setLatencies(dispatcher, [1, 1, 2]);
+        balancingStrategy.latencyToleranceMs = -1;
+
+        expect(pick(dispatcher, 'replica', 2)).toEqual(replicas);
+    });
+
+    test('initDB uses the configured strategy to select proxies', async () => {
+        const proxies = [
+            createKnex(successfulCheckup({value: 1})),
+            createKnex(successfulCheckup({value: 1})),
+        ];
+        proxies.forEach((proxy) => knexBuilder.mockImplementationOnce(() => proxy));
+
+        const {db, terminate} = initDB({
+            connectionString: 'postgresql://db-0.example/db,postgresql://db-1.example/db',
+            dispatcherOptions: {
+                topologyMode: 'proxy',
+                healthcheckInterval: 60_000,
+                balancingStrategy: {kind: 'round-robin'},
+            },
+            logger: {info: jest.fn(), error: jest.fn()},
+        });
+        activeDispatchers.push(db);
+
+        try {
+            await db.ready();
+            setLatencies(db, [1, 2]);
+
+            expect(pick(db, 'primary', 2)).toEqual(proxies);
+        } finally {
+            process.removeListener('SIGINT', terminate);
+        }
+    });
+
+    test('round-robin with a zero window rotates only equally fast replicas', async () => {
+        const {dispatcher, replicas} = createReplicaSet(3, {
+            balancingStrategy: {kind: 'round-robin', latencyToleranceMs: 0},
+        });
+
+        await dispatcher.ready();
+        setLatencies(dispatcher, [1, 1, 1, 2]);
+
+        expect(pick(dispatcher, 'replica', 4)).toEqual([
+            replicas[0],
+            replicas[1],
+            replicas[0],
+            replicas[1],
+        ]);
+    });
+
+    test('rotates replicas whose latency is within the tolerance window', async () => {
+        const {dispatcher, replicas} = createReplicaSet(3, {
+            balancingStrategy: {kind: 'round-robin', latencyToleranceMs: 10},
+        });
+
+        await dispatcher.ready();
+        setLatencies(dispatcher, [1, 2, 12, 13]);
+
+        expect(pick(dispatcher, 'replica', 4)).toEqual([
+            replicas[0],
+            replicas[1],
+            replicas[0],
+            replicas[1],
+        ]);
+    });
+
+    test('round-robin without a window uses every healthy replica regardless of latency', async () => {
+        const primary = createKnex(successfulCheckup({pg_is_in_recovery: false}));
+        const replicas = [0, 30, 60].map((latency) =>
+            createKnex(successfulCheckup({pg_is_in_recovery: true}, latency)),
+        );
+        const unhealthyReplica = createKnex(failedCheckup);
+        const {dispatcher} = createDispatcher([primary, ...replicas, unhealthyReplica], {
+            balancingStrategy: {kind: 'round-robin'},
+        });
+
+        await dispatcher.ready();
+
+        expect(pick(dispatcher, 'replica', 6)).toEqual([...replicas, ...replicas]);
+    });
+
+    test('keeps rotating evenly after the window shrinks', async () => {
+        const {dispatcher, replicas} = createReplicaSet(3, {
+            balancingStrategy: {kind: 'round-robin', latencyToleranceMs: 0},
+        });
+
+        await dispatcher.ready();
+        setLatencies(dispatcher, [1, 1, 1, 1]);
+
+        pick(dispatcher, 'replica', 2); // position now points at the third replica
+        setLatencies(dispatcher, [1, 1, 1, 100]);
+
+        expect(pick(dispatcher, 'replica', 4)).toEqual([
+            replicas[0],
+            replicas[1],
+            replicas[0],
+            replicas[1],
+        ]);
+    });
+
+    test('proxy mode rotates both roles across proxies within the tolerance window', async () => {
+        const proxies = [0, 1, 2].map(() => createKnex(successfulCheckup({value: 1})));
+        const {dispatcher} = createDispatcher(proxies, {
+            topologyMode: 'proxy',
+            balancingStrategy: {kind: 'round-robin', latencyToleranceMs: 10},
+        });
+
+        await dispatcher.ready();
+        setLatencies(dispatcher, [1, 5, 80]);
+
+        for (const role of ['primary', 'replica']) {
+            expect(new Set(pick(dispatcher, role, 4))).toEqual(new Set(proxies.slice(0, 2)));
+        }
     });
 });

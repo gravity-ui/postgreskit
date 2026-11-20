@@ -4,9 +4,17 @@ import {type Constructor, Model} from 'objection';
 
 import {defaultDispatcherOptions, defaultExLogger, defaultKnexOptions} from './constants';
 import {PGDispatcher} from './dispatcher';
-import type {BaseModel, ExLogger, PGHealthcheckHandler, TopologyMode} from './types';
+import type {
+    BalancingStrategy,
+    BaseModel,
+    ExLogger,
+    PGHealthcheckHandler,
+    TopologyMode,
+} from './types';
 
 export type {
+    BalancingStrategy,
+    FastestBalancingStrategy,
     PGConnectionRole,
     PGConnectionStatus,
     PGHealthcheckHandler,
@@ -14,6 +22,7 @@ export type {
     PGPrimaryReplicaConnectionStatus,
     PGPrimaryReplicaHealthcheckStatus,
     PGProxyHealthcheckStatus,
+    RoundRobinBalancingStrategy,
     TopologyMode,
 } from './types';
 
@@ -24,6 +33,7 @@ export interface CoreDBDispatcherOptions {
     suppressHealthcheckStatusLogs?: boolean;
     beforeTerminate?: () => Promise<void>;
     topologyMode?: TopologyMode;
+    balancingStrategy?: BalancingStrategy;
 }
 
 export type GetModelParams = {cancelOnTimeout?: boolean; useLimitInFirst?: boolean};
