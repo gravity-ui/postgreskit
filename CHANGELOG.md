@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.6.0](https://github.com/gravity-ui/postgreskit/compare/v3.5.1...v3.6.0) (2026-11-20)
+
+
+### Features
+
+* add round-robin connection balancing ([#45](https://github.com/gravity-ui/postgreskit/issues/45)) ([7e2965b](https://github.com/gravity-ui/postgreskit/commit/7e2965b49ff491a5e3d68bef9ed0b81493a1c815))
+
 ## [3.5.1](https://github.com/gravity-ui/postgreskit/compare/v3.5.0...v3.5.1) (2026-11-10)
 
 
