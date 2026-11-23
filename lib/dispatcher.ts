@@ -2,6 +2,7 @@ import {URL} from 'url';
 
 import knexBuilder from 'knex';
 import type {Knex} from 'knex';
+import {Pool, type PoolClient} from 'pg';
 
 import type {
     BalancingStrategy,
@@ -40,6 +41,9 @@ export interface PDConstructorArgs {
 interface PDConnection {
     host: string;
     knex: Knex;
+    healthcheckPool: Pool;
+    check?: Promise<void>;
+    cancelCheck?: () => void;
     primary: boolean;
     healthy: boolean;
     latency: number;
@@ -96,7 +100,9 @@ export class PGDispatcher {
     private logger: {info: InfoLogger; error: ErrorLogger};
     private onHealthcheck?: PGHealthcheckHandler;
     private hcTimer?: Timeout | null;
-    private isInit = false;
+    private initialHealthcheck: Promise<void>;
+    private healthcheck?: Promise<void>;
+    private termination?: Promise<void[]>;
     private isTerminating = false;
     private readonly balancingStrategy: BalancingStrategy;
     private balancingCursor = 0;
@@ -123,9 +129,19 @@ export class PGDispatcher {
                 connection: connectionString,
             });
             onKnexCreated?.(knex);
+            const healthcheckPool = new Pool({
+                connectionString,
+                min: 0,
+                max: 1,
+                connectionTimeoutMillis: options.healthcheckTimeout,
+            });
+            healthcheckPool.on('error', (error) => {
+                this.logger.error({error, data: {host: url.hostname, phase: 'idle'}});
+            });
             return {
                 host: url.hostname,
                 knex,
+                healthcheckPool,
                 primary: false,
                 healthy: false,
                 latency: Infinity,
@@ -150,9 +166,10 @@ export class PGDispatcher {
             },
         };
 
-        this.initHealthcheck().catch((error) => {
-            this.logger.error({error});
-        });
+        this.initialHealthcheck = this.performHealthcheck();
+        this.hcTimer = setInterval(() => {
+            this.performHealthcheck();
+        }, this.options.healthcheckInterval);
     }
 
     get knexConfig() {
@@ -160,42 +177,41 @@ export class PGDispatcher {
     }
 
     async ready() {
-        if (!this.isInit) {
-            await this.knexReady();
-            await Promise.all(this.connections.map((c) => this.checkDatabase(c)));
-
-            this.isInit = true;
-        }
-
-        return Promise.resolve();
+        await this.initialHealthcheck;
     }
 
     terminate() {
+        if (this.termination) {
+            return this.termination;
+        }
         this.isTerminating = true;
 
         if (this.hcTimer) {
             clearInterval(this.hcTimer);
+            this.hcTimer = null;
         }
-
-        return Promise.all(
-            this.connections.map((c) =>
-                c.knex
-                    .destroy()
-                    .then(() => {
-                        this.logger.info({
-                            message: 'Connection successfully terminated',
-                            data: {host: c.host},
-                        });
-                    })
-                    .catch((error) =>
-                        this.logger.error({
-                            message: 'Error during connection terminating',
-                            error,
-                            data: {host: c.host},
-                        }),
-                    ),
+        this.connections.forEach((connection) => connection.cancelCheck?.());
+        this.termination = Promise.all(
+            this.connections.flatMap((c) =>
+                [c.knex.destroy(), c.healthcheckPool.end()].map((closing) =>
+                    closing
+                        .then(() => {
+                            this.logger.info({
+                                message: 'Connection successfully terminated',
+                                data: {host: c.host},
+                            });
+                        })
+                        .catch((error) =>
+                            this.logger.error({
+                                message: 'Error during connection terminating',
+                                error,
+                                data: {host: c.host},
+                            }),
+                        ),
+                ),
             ),
         );
+        return this.termination;
     }
 
     get primary() {
@@ -249,23 +265,18 @@ export class PGDispatcher {
         }
     }
 
-    private async initHealthcheck() {
-        await this.knexReady();
-
+    private performHealthcheck(): Promise<void> {
         if (this.isTerminating) {
-            return;
+            return Promise.resolve();
         }
-
-        const performHealthcheck = () => {
-            const checkups = this.connections.map((connection) =>
-                this.checkDatabase(connection).catch((error) => {
-                    this.logger.error({message: 'Unhandled error during database checkup', error});
-                    connection.healthy = false;
-                    connection.primary = false;
-                }),
-            );
-            Promise.all(checkups).then(() => {
-                // Connections hold shared current state; this is not an isolated per-cycle result.
+        if (this.healthcheck) {
+            return this.healthcheck;
+        }
+        this.healthcheck = Promise.all(this.connections.map((c) => this.checkDatabase(c)))
+            .then(() => {
+                if (this.isTerminating) {
+                    return;
+                }
                 const status = this.getHealthcheckStatus();
                 if (!this.options.suppressHealthcheckStatusLogs) {
                     this.logger.info({
@@ -282,26 +293,21 @@ export class PGDispatcher {
                     });
                 }
                 this.notifyHealthcheck(status);
+            })
+            .finally(() => {
+                this.healthcheck = undefined;
             });
-        };
-
-        performHealthcheck();
-
-        this.hcTimer = setInterval(() => {
-            performHealthcheck();
-        }, this.options.healthcheckInterval);
+        return this.healthcheck;
     }
 
-    private async performCheckupQuery(knex: Knex): Promise<PDCheckupResult> {
+    private async performCheckupQuery(client: PoolClient): Promise<PDCheckupResult> {
         if (this.isProxyMode) {
-            await knex.raw('SELECT 1;').timeout(this.options.healthcheckTimeout);
+            await client.query('SELECT 1;');
 
             return {pingOk: true, primary: false};
         }
 
-        const result = await knex
-            .raw('SELECT pg_is_in_recovery();')
-            .timeout(this.options.healthcheckTimeout);
+        const result = await client.query('SELECT pg_is_in_recovery();');
 
         const isReplica =
             result && result.rows && result.rows[0] && result.rows[0].pg_is_in_recovery;
@@ -312,61 +318,91 @@ export class PGDispatcher {
         return {pingOk, primary: isPrimary};
     }
 
-    private async checkDatabase(connection: PDConnection) {
-        let deadline: ReturnType<typeof setTimeout> | undefined;
-
-        try {
-            const startTime = new Date().getTime();
-            type RaceCheckupResult = PDCheckupResult | null;
-            const checkupResult: RaceCheckupResult = (await Promise.race([
-                Promise.resolve(this.performCheckupQuery(connection.knex)).catch((error) => {
-                    this.logger.error({message: 'Error performing database checkup', error});
-                }),
-                new Promise((resolve) => {
-                    deadline = setTimeout(
-                        () => resolve(null),
-                        this.options.healthcheckTimeout + 10,
-                    );
-                }),
-            ])) as RaceCheckupResult;
-            connection.latency = new Date().getTime() - startTime;
-
-            if (checkupResult) {
-                connection.healthy = checkupResult.pingOk;
-                connection.primary = checkupResult.primary;
-            } else {
-                if (connection.latency > this.options.healthcheckTimeout) {
+    private checkDatabase(connection: PDConnection): Promise<void> {
+        if (connection.check) {
+            return connection.check;
+        }
+        const startTime = Date.now();
+        let phase = 'acquire';
+        let expired = false;
+        let client: PoolClient | undefined;
+        let released = false;
+        const release = (destroy = false) => {
+            if (client && !released) {
+                released = true;
+                client.release(destroy);
+                client.removeListener('error', onClientError);
+            }
+        };
+        let rejectDeadline: (error: Error) => void;
+        const deadlineResult = new Promise<never>((_, reject) => {
+            rejectDeadline = reject;
+        });
+        function onClientError(error: Error) {
+            expired = true;
+            release(true);
+            rejectDeadline(error);
+        }
+        const cancel = () => {
+            expired = true;
+            // Destroy an in-flight query's socket; never return it to the idle pool.
+            release(true);
+            rejectDeadline(new Error('Database checkup timeouted'));
+        };
+        const deadline = setTimeout(cancel, this.options.healthcheckTimeout);
+        connection.cancelCheck = cancel;
+        const physicalCheck = (async () => {
+            try {
+                client = await connection.healthcheckPool.connect();
+                client.on('error', onClientError);
+                if (expired) {
+                    release(true);
+                    throw new Error('Database checkup timeouted');
+                }
+                phase = 'query';
+                return await this.performCheckupQuery(client);
+            } catch (error) {
+                // Driver-side query timeouts may reject before the server stops executing.
+                release(true);
+                throw error;
+            } finally {
+                release();
+            }
+        })();
+        const result = Promise.race([physicalCheck, deadlineResult])
+            .then((checkup) => {
+                if (!this.isTerminating) {
+                    connection.healthy = checkup.pingOk;
+                    connection.primary = checkup.primary;
+                }
+            })
+            .catch((error) => {
+                if (!this.isTerminating) {
+                    connection.healthy = false;
+                    connection.primary = false;
                     this.logger.error({
-                        message: 'Database checkup timeouted',
-                        data: {host: connection.host},
-                    });
-                } else {
-                    this.logger.error({
-                        message: 'Database checkup failed',
-                        data: {host: connection.host},
+                        message: 'Error performing database checkup',
+                        error,
+                        data: {host: connection.host, phase},
                     });
                 }
-
-                connection.healthy = false;
-                connection.primary = false;
-            }
-        } catch (error) {
-            connection.healthy = false;
-            connection.primary = false;
-            this.logger.error({
-                message: 'Database checkup failed',
-                error: error as Error,
-                data: {host: connection.host},
-            });
-        } finally {
-            if (deadline !== undefined) {
+            })
+            .finally(() => {
                 clearTimeout(deadline);
-            }
-        }
-    }
-
-    private async knexReady() {
-        await Promise.all(this.connections.map((c) => c.knex));
+                connection.cancelCheck = undefined;
+                connection.latency = Date.now() - startTime;
+            });
+        connection.check = result;
+        // The deadline reports failure immediately. Keep single-flight protection until
+        // the physical operation settles so late completion cannot overlap a new probe.
+        physicalCheck
+            .catch(() => {})
+            .finally(() => {
+                result.then(() => {
+                    connection.check = undefined;
+                });
+            });
+        return result;
     }
 
     private getHealthcheckStatus(): PGHealthcheckStatus {

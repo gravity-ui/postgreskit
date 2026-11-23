@@ -60,7 +60,7 @@ export const {db, CoreBaseModel, helpers} = initDB({
 - `logger`: Provide the `info` and `error` callbacks for logging messages
 - `dispatcherOptions`: Settings for connection balancing (none of the options are required)
   - `healthcheckInterval`: Health check interval in milliseconds, default value: 5000ms
-  - `healthcheckTimeout`: Health check interval in milliseconds, default value: 700ms
+  - `healthcheckTimeout`: Health check deadline in milliseconds, including connection acquisition and the query, default value: 700ms
   - `suppressStatusLogs`: Boolean value that disables database health-check status logs (useful for developers)
   - `beforeTerminate`: Function called before terminating a connection, must return a Promise
   - `topologyMode`: Connection topology, either `primary-replica` (the default) or `proxy`
@@ -68,7 +68,7 @@ export const {db, CoreBaseModel, helpers} = initDB({
     - `{kind: 'fastest'}` (the default): always picks the host with the lowest latest health-check latency; among equally fast hosts, the first one in the connection list
     - `{kind: 'round-robin', latencyToleranceMs?: number}`: healthy hosts are used in turn, spreading load across them. Without `latencyToleranceMs`, every healthy host takes part regardless of latency, so with hosts in several data centers part of the load goes to distant ones. Set `latencyToleranceMs` to rotate only hosts whose latest health-check latency is within that value of the fastest one, e.g. `10` to skip distant hosts, or `0` to rotate only the hosts sharing the lowest latency
 - `knexOptions`: Non-required additional options that will be passed to Knex before initialization
-- `onKnexCreated`: Optional callback called synchronously for each Knex instance created by the dispatcher, before database health checks start. Use it to attach instrumentation, event listeners, or plugins that do not require an active database connection. If it throws, initialization fails. The callback receives the Knex instance and returns nothing.
+- `onKnexCreated`: Optional callback called synchronously for each application Knex instance created by the dispatcher, before database health checks start. Use it to attach instrumentation, event listeners, or plugins that do not require an active database connection. If it throws, initialization fails. The callback receives the Knex instance and returns nothing.
 - `onHealthcheck`: Optional synchronous callback called after each database health check with a snapshot of every host's availability, latency, and role. In `primary-replica` mode, unavailable hosts have the `unknown` role; proxy connections do not include a role. It is called even when `suppressStatusLogs` is enabled. Callback errors do not interrupt database routing or subsequent health checks.
 
 When all connection strings point to equivalent proxy or router instances, such as SPQR routers, use `proxy` mode. Healthy endpoints are then eligible for both primary and replica queries, and the endpoint with the lowest latest health-check latency is selected (with the `round-robin` balancing strategy, endpoints are rotated instead):
@@ -100,6 +100,8 @@ The `initDB` constructor exports three elements: `db`, `CoreBaseModel`, and `hel
 ### db
 
 `db`: Instance of the [PGDispatcher](https://github.com/gravity-ui/postgreskit/blob/main/lib/dispatcher.ts) module responsible for connection balancing. Under the hood, this module creates N instances of knex (N is the number of hosts passed in `connectionString`). By default, it polls the database hosts every `healthcheckInterval` milliseconds, requesting if they are primary hosts or replica hosts (using the `SELECT pg_is_in_recovery()` query). In `proxy` topology mode, it uses `SELECT 1` instead and routes both `db.primary` and `db.replica` to the fastest healthy endpoint (or rotates between healthy endpoints with the `round-robin` balancing strategy).
+
+Health checks use a separate `pg` pool with at most one extra connection per host, so application pool saturation does not delay probes. Probe latency includes acquiring this connection and executing the query; timed-out connections are destroyed. Connection URL options, including TLS and authentication, apply to both pools. Application Knex hooks and pool settings do not apply to probes. Termination closes both pools.
 
 Public `db` methods:
 

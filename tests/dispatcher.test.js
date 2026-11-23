@@ -1,8 +1,10 @@
 /* eslint-env jest */
 
 jest.mock('knex', () => jest.fn());
+jest.mock('pg', () => ({Pool: jest.fn()}));
 
 const knexBuilder = require('knex');
+const {Pool} = require('pg');
 
 const {defaultDispatcherOptions} = require('../build/constants');
 const {initDB} = require('../build/core');
@@ -11,12 +13,21 @@ const {PGDispatcher} = require('../build/dispatcher');
 const activeDispatchers = [];
 
 function createKnex(checkup) {
-    const timeout = jest.fn(() => checkup());
-
+    const probe = {
+        query: jest.fn(() => checkup()),
+        release: jest.fn(),
+        on: jest.fn(),
+        removeListener: jest.fn(),
+    };
     return {
         destroy: jest.fn(() => Promise.resolve()),
-        raw: jest.fn(() => ({timeout})),
-        timeout,
+        raw: jest.fn(() => new Promise(() => {})),
+        probe,
+        healthcheckPool: {
+            connect: jest.fn(() => Promise.resolve(probe)),
+            end: jest.fn(() => Promise.resolve()),
+            on: jest.fn(),
+        },
     };
 }
 
@@ -31,8 +42,11 @@ function failedCheckup() {
     return Promise.reject(new Error('Proxy unavailable'));
 }
 
-function createDispatcher(clients, options = {}, onHealthcheck) {
-    clients.forEach((client) => knexBuilder.mockImplementationOnce(() => client));
+function createDispatcher(clients, options = {}, onHealthcheck, constructorOptions = {}) {
+    clients.forEach((client) => {
+        knexBuilder.mockImplementationOnce(() => client);
+        Pool.mockImplementationOnce(() => client.healthcheckPool);
+    });
 
     const logger = {
         error: jest.fn(),
@@ -50,6 +64,7 @@ function createDispatcher(clients, options = {}, onHealthcheck) {
             ...options,
         },
         onHealthcheck,
+        ...constructorOptions,
     });
 
     activeDispatchers.push(dispatcher);
@@ -74,8 +89,8 @@ describe('PGDispatcher topology modes', () => {
         await dispatcher.ready();
 
         expect(defaultDispatcherOptions.topologyMode).toBe('primary-replica');
-        expect(primary.raw).toHaveBeenCalledWith('SELECT pg_is_in_recovery();');
-        expect(replica.raw).toHaveBeenCalledWith('SELECT pg_is_in_recovery();');
+        expect(primary.probe.query).toHaveBeenCalledWith('SELECT pg_is_in_recovery();');
+        expect(replica.probe.query).toHaveBeenCalledWith('SELECT pg_is_in_recovery();');
         expect(dispatcher.primary).toBe(primary);
         expect(dispatcher.replica).toBe(replica);
     });
@@ -108,8 +123,8 @@ describe('PGDispatcher topology modes', () => {
         await dispatcher.ready();
 
         for (const proxy of [slowerProxy, fasterProxy, unhealthyProxy]) {
-            expect(proxy.raw).toHaveBeenCalledWith('SELECT 1;');
-            expect(proxy.raw).not.toHaveBeenCalledWith('SELECT pg_is_in_recovery();');
+            expect(proxy.probe.query).toHaveBeenCalledWith('SELECT 1;');
+            expect(proxy.probe.query).not.toHaveBeenCalledWith('SELECT pg_is_in_recovery();');
         }
         expect(dispatcher.primary).toBe(fasterProxy);
         expect(dispatcher.replica).toBe(fasterProxy);
@@ -324,6 +339,184 @@ describe('PGDispatcher healthcheck timer cleanup', () => {
     });
 });
 
+describe('PGDispatcher isolated probes', () => {
+    beforeEach(() => {
+        jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+        jest.useRealTimers();
+    });
+
+    test('a saturated work pool does not remove the primary or delay probe latency', async () => {
+        const primary = createKnex(() => Promise.resolve({rows: [{pg_is_in_recovery: false}]}));
+        const onKnexCreated = jest.fn();
+        const onHealthcheck = jest.fn();
+        const knexOptions = {pool: {min: 0, max: 20}, acquireConnectionTimeout: 40000};
+        const {dispatcher} = createDispatcher([primary], {}, onHealthcheck, {
+            knexOptions,
+            onKnexCreated,
+        });
+        await dispatcher.ready();
+
+        // All 20 application requests remain pending throughout the next probe.
+        Array.from({length: 20}, () => dispatcher.primary.raw('SELECT pg_sleep(60);'));
+        await jest.advanceTimersByTimeAsync(60_000);
+
+        expect(dispatcher.primary).toBe(primary);
+        expect(primary.raw).toHaveBeenCalledTimes(20);
+        expect(primary.probe.query).toHaveBeenCalledTimes(2);
+        expect(onHealthcheck).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                connections: [
+                    expect.objectContaining({healthy: true, role: 'primary', latency: 0}),
+                ],
+            }),
+        );
+        expect(onKnexCreated).toHaveBeenCalledTimes(1);
+        expect(onKnexCreated).toHaveBeenCalledWith(primary);
+        expect(knexBuilder).toHaveBeenLastCalledWith(expect.objectContaining(knexOptions));
+        expect(Pool).toHaveBeenLastCalledWith({
+            connectionString: 'postgresql://user:password@database-0.example/db',
+            min: 0,
+            max: 1,
+            connectionTimeoutMillis: 100,
+        });
+    });
+
+    test('an actual probe failure removes a previously healthy primary and reports query phase', async () => {
+        const primary = createKnex(() => Promise.resolve({rows: [{pg_is_in_recovery: false}]}));
+        const onHealthcheck = jest.fn();
+        const {dispatcher, logger} = createDispatcher([primary], {}, onHealthcheck);
+        await dispatcher.ready();
+        expect(dispatcher.primary).toBe(primary);
+        primary.probe.query.mockRejectedValue(new Error('Connection terminated unexpectedly'));
+
+        await jest.advanceTimersByTimeAsync(60_000);
+
+        expect(() => dispatcher.primary).toThrow(
+            expect.objectContaining({code: 'ERR_DB_NOT_AVAILABLE'}),
+        );
+        expect(logger.error).toHaveBeenCalledWith('PGDispatcher error', expect.any(Error), {
+            host: 'database-0.example',
+            phase: 'query',
+        });
+        expect(onHealthcheck).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                connections: [expect.objectContaining({healthy: false, role: 'unknown'})],
+            }),
+        );
+    });
+
+    test('constructor, concurrent ready calls and timer share one pending physical probe', async () => {
+        let finish;
+        const primary = createKnex(
+            () =>
+                new Promise((resolve) => {
+                    finish = resolve;
+                }),
+        );
+        const {dispatcher} = createDispatcher([primary], {healthcheckInterval: 10});
+        const ready = Promise.all([dispatcher.ready(), dispatcher.ready()]);
+        await jest.advanceTimersByTimeAsync(30);
+        expect(primary.healthcheckPool.connect).toHaveBeenCalledTimes(1);
+        expect(primary.probe.query).toHaveBeenCalledTimes(1);
+
+        finish({rows: [{pg_is_in_recovery: false}]});
+        await ready;
+        expect(dispatcher.primary).toBe(primary);
+        await dispatcher.terminate();
+        expect(jest.getTimerCount()).toBe(0);
+    });
+
+    test('timeout destroys the client without overlapping probes or accepting late success', async () => {
+        let finish;
+        const primary = createKnex(
+            () =>
+                new Promise((resolve) => {
+                    finish = resolve;
+                }),
+        );
+        const {dispatcher} = createDispatcher([primary], {healthcheckInterval: 10});
+        const ready = dispatcher.ready();
+        await jest.advanceTimersByTimeAsync(150);
+        await ready;
+
+        expect(primary.probe.release).toHaveBeenCalledTimes(1);
+        expect(primary.probe.release).toHaveBeenCalledWith(true);
+        expect(primary.healthcheckPool.connect).toHaveBeenCalledTimes(1);
+        expect(() => dispatcher.primary).toThrow();
+        finish({rows: [{pg_is_in_recovery: false}]});
+        await jest.advanceTimersByTimeAsync(0);
+        expect(() => dispatcher.primary).toThrow();
+
+        primary.probe.query.mockResolvedValue({rows: [{pg_is_in_recovery: false}]});
+        await jest.advanceTimersByTimeAsync(10);
+        expect(dispatcher.primary).toBe(primary);
+        await dispatcher.terminate();
+        expect(primary.destroy).toHaveBeenCalledTimes(1);
+        expect(primary.healthcheckPool.end).toHaveBeenCalledTimes(1);
+        expect(jest.getTimerCount()).toBe(0);
+    });
+
+    test.each(['failure', 'pending'])(
+        'cleans both pools during connection acquisition %s',
+        async (outcome) => {
+            const primary = createKnex(() => Promise.resolve({rows: [{pg_is_in_recovery: false}]}));
+            if (outcome === 'failure') {
+                primary.healthcheckPool.connect.mockRejectedValue(new Error('Connection refused'));
+            } else {
+                primary.healthcheckPool.connect.mockReturnValue(new Promise(() => {}));
+            }
+            const {dispatcher, logger} = createDispatcher([primary]);
+            const ready = dispatcher.ready();
+            await jest.advanceTimersByTimeAsync(100);
+            await ready;
+            expect(logger.error).toHaveBeenCalledWith('PGDispatcher error', expect.any(Error), {
+                host: 'database-0.example',
+                phase: 'acquire',
+            });
+            expect(primary.probe.query).not.toHaveBeenCalled();
+            await Promise.all([dispatcher.terminate(), dispatcher.terminate()]);
+            expect(primary.destroy).toHaveBeenCalledTimes(1);
+            expect(primary.healthcheckPool.end).toHaveBeenCalledTimes(1);
+            expect(jest.getTimerCount()).toBe(0);
+        },
+    );
+
+    test('handles idle pool errors through the existing logger', async () => {
+        const primary = createKnex(() => Promise.resolve({rows: [{pg_is_in_recovery: false}]}));
+        const {dispatcher, logger} = createDispatcher([primary]);
+        await dispatcher.ready();
+        const idleError = new Error('Idle connection lost');
+        const [, handleError] = primary.healthcheckPool.on.mock.calls[0];
+        handleError(idleError);
+        expect(logger.error).toHaveBeenCalledWith('PGDispatcher error', idleError, {
+            host: 'database-0.example',
+            phase: 'idle',
+        });
+    });
+
+    test('handles errors on an acquired probe client and destroys it', async () => {
+        const primary = createKnex(() => new Promise(() => {}));
+        const {dispatcher, logger} = createDispatcher([primary]);
+        const ready = dispatcher.ready();
+        await jest.advanceTimersByTimeAsync(0);
+        const clientError = new Error('Probe socket failed');
+        const [, handleError] = primary.probe.on.mock.calls[0];
+        handleError(clientError);
+        await ready;
+
+        expect(primary.probe.release).toHaveBeenCalledWith(true);
+        expect(primary.probe.removeListener).toHaveBeenCalledWith('error', handleError);
+        expect(() => dispatcher.primary).toThrow();
+        expect(logger.error).toHaveBeenCalledWith('PGDispatcher error', clientError, {
+            host: 'database-0.example',
+            phase: 'query',
+        });
+    });
+});
+
 describe('PGDispatcher balancing strategies', () => {
     function pick(dispatcher, role, times) {
         return Array.from({length: times}, () => dispatcher[role]);
@@ -399,7 +592,10 @@ describe('PGDispatcher balancing strategies', () => {
             createKnex(successfulCheckup({value: 1})),
             createKnex(successfulCheckup({value: 1})),
         ];
-        proxies.forEach((proxy) => knexBuilder.mockImplementationOnce(() => proxy));
+        proxies.forEach((proxy) => {
+            knexBuilder.mockImplementationOnce(() => proxy);
+            Pool.mockImplementationOnce(() => proxy.healthcheckPool);
+        });
 
         const {db, terminate} = initDB({
             connectionString: 'postgresql://db-0.example/db,postgresql://db-1.example/db',
